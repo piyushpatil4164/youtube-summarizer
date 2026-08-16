@@ -1,37 +1,77 @@
 from fpdf import FPDF
+import re
 
-class LectureNotesPDF(FPDF):
+class SecurePDF(FPDF):
     def header(self):
         self.set_font('Helvetica', 'B', 12)
-        self.cell(self.epw, 10, 'Lecture Notes & Study Digest', border=False, align='C', new_x="LMARGIN", new_y="NEXT")
-        self.line(10, 20, 200, 20)
-        self.ln(5)
+        self.set_text_color(99, 102, 241)
+        self.cell(0, 10, 'LectureDigest AI - Study Notes', border=False, align='L')
+        self.ln(12)
 
     def footer(self):
         self.set_y(-15)
         self.set_font('Helvetica', 'I', 8)
-        self.cell(self.epw, 10, f'Page {self.page_no()}', align='C')
+        self.set_text_color(150, 150, 150)
+        self.cell(0, 10, f'Page {self.page_no()}', border=False, align='C')
 
-def create_pdf(text_content: str, title: str = "Video Notes") -> bytes:
-    """Converts Markdown text to clean, downloadable PDF bytes."""
-    pdf = LectureNotesPDF()
+def sanitize_text_for_pdf(text: str) -> str:
+    """Encodes text to standard Latin-1 compatible characters to prevent PDF export errors."""
+    replacements = {
+        '\u2018': "'", '\u2019': "'",
+        '\u201c': '"', '\u201d': '"',
+        '\u2013': '-', '\u2014': '-',
+        '\u2026': '...', '\u2022': '*',
+    }
+    for orig, rep in replacements.items():
+        text = text.replace(orig, rep)
+    
+    # Strip non-latin1 characters
+    return text.encode('latin-1', 'ignore').decode('latin-1')
+
+def create_pdf(markdown_text: str) -> bytes:
+    """Generates an in-memory PDF without storing files on disk or exposing server paths."""
+    pdf = SecurePDF()
     pdf.set_auto_page_break(auto=True, margin=15)
+    
+    # Clean PDF Metadata (Removes local creator/OS info)
+    pdf.set_title("Study Notes")
+    pdf.set_author("LectureDigest AI")
+    pdf.set_creator("LectureDigest AI Engine")
+    
     pdf.add_page()
-    
-    # Document Title
-    pdf.set_font('Helvetica', 'B', 14)
-    pdf.cell(pdf.epw, 10, title[:60], align='L', new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(3)
-    
-    # Clean standard Markdown formatting
-    clean_text = text_content.replace('**', '').replace('###', '').replace('##', '').replace('#', '')
-    
-    pdf.set_font('Helvetica', size=10)
-    for line in clean_text.split('\n'):
-        safe_line = line.encode('latin-1', 'replace').decode('latin-1').strip()
-        if not safe_line:
+    pdf.set_font("Helvetica", size=10)
+    pdf.set_text_color(40, 40, 40)
+
+    clean_content = sanitize_text_for_pdf(markdown_text)
+
+    for line in clean_content.split('\n'):
+        line_clean = line.strip()
+        if not line_clean:
             pdf.ln(4)
+            continue
+        
+        # Headers
+        if line_clean.startswith('# '):
+            pdf.ln(3)
+            pdf.set_font("Helvetica", 'B', 14)
+            pdf.set_text_color(30, 41, 59)
+            pdf.multi_cell(0, 7, line_clean.replace('# ', ''))
+            pdf.set_font("Helvetica", size=10)
+            pdf.set_text_color(40, 40, 40)
+        elif line_clean.startswith('## '):
+            pdf.ln(2)
+            pdf.set_font("Helvetica", 'B', 12)
+            pdf.set_text_color(79, 70, 229)
+            pdf.multi_cell(0, 6, line_clean.replace('## ', ''))
+            pdf.set_font("Helvetica", size=10)
+            pdf.set_text_color(40, 40, 40)
+        elif line_clean.startswith('### '):
+            pdf.set_font("Helvetica", 'B', 10)
+            pdf.multi_cell(0, 5, line_clean.replace('### ', ''))
+            pdf.set_font("Helvetica", size=10)
         else:
-            pdf.multi_cell(w=pdf.epw, h=6, text=safe_line, new_x="LMARGIN", new_y="NEXT")
-            
+            # Strip bold formatting markers for plain PDF rendering
+            stripped_line = re.sub(r'\*\*(.*?)\*\*', r'\1', line_clean)
+            pdf.multi_cell(0, 5, stripped_line)
+
     return bytes(pdf.output())
