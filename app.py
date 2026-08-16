@@ -7,12 +7,12 @@ from pdf_service import create_pdf
 
 load_dotenv()
 
-# Resolve API Key
-default_api_key = ""
+# Securely load the API key from Streamlit Cloud Secrets or local .env
+active_api_key = ""
 if "GROQ_API_KEY" in st.secrets:
-    default_api_key = st.secrets["GROQ_API_KEY"]
+    active_api_key = st.secrets["GROQ_API_KEY"]
 else:
-    default_api_key = os.getenv("GROQ_API_KEY", "")
+    active_api_key = os.getenv("GROQ_API_KEY", "")
 
 # Page Configuration
 st.set_page_config(
@@ -22,7 +22,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS Styling (Dark Modern SaaS Theme)
+# Adaptive Theme CSS
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
@@ -32,18 +32,18 @@ st.markdown("""
     }
     
     .hero-container {
-        background: linear-gradient(135deg, #1E1E2F 0%, #0F0F1A 100%);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        padding: 2.5rem 2rem;
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(168, 85, 247, 0.08) 100%);
+        border: 1px solid rgba(128, 128, 128, 0.2);
+        padding: 2.2rem 2rem;
         border-radius: 16px;
-        margin-bottom: 2rem;
+        margin-bottom: 1.8rem;
         text-align: center;
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(10px);
     }
     
     .badge {
-        background: rgba(99, 102, 241, 0.2);
-        color: #818CF8;
+        background: rgba(99, 102, 241, 0.15);
+        color: #6366F1;
         padding: 0.35rem 0.85rem;
         border-radius: 9999px;
         font-size: 0.8rem;
@@ -56,24 +56,21 @@ st.markdown("""
     }
     
     .hero-title {
-        font-size: 2.5rem;
+        font-size: 2.3rem;
         font-weight: 800;
-        background: linear-gradient(90deg, #FFFFFF, #CBD5E1);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
         margin-bottom: 0.5rem;
     }
     
     .hero-desc {
-        color: #94A3B8;
+        opacity: 0.85;
         font-size: 1.05rem;
         max-width: 650px;
         margin: 0 auto;
     }
     
     .metric-card {
-        background: rgba(30, 41, 59, 0.5);
-        border: 1px solid rgba(255, 255, 255, 0.07);
+        background: rgba(128, 128, 128, 0.08);
+        border: 1px solid rgba(128, 128, 128, 0.18);
         border-radius: 12px;
         padding: 1.25rem;
         text-align: center;
@@ -82,46 +79,25 @@ st.markdown("""
     .metric-value {
         font-size: 1.75rem;
         font-weight: 700;
-        color: #38BDF8;
+        color: #6366F1;
     }
     
     .metric-label {
         font-size: 0.85rem;
-        color: #94A3B8;
+        opacity: 0.8;
         margin-top: 0.25rem;
     }
     
     .stButton>button {
-        background: linear-gradient(90deg, #6366F1, #4F46E5);
-        color: white;
-        border: none;
-        padding: 0.65rem 1.5rem;
         border-radius: 10px;
         font-weight: 600;
         transition: all 0.2s ease-in-out;
-        box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
-    }
-    
-    .stButton>button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
-        background: linear-gradient(90deg, #4F46E5, #4338CA);
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Sidebar Configuration
+# Sidebar Configuration (Output format only — No API key shown)
 with st.sidebar:
-    st.markdown("### ⚙️ Settings & Control")
-    user_custom_key = st.text_input(
-        "Groq API Key (Optional)",
-        type="password",
-        value=default_api_key,
-        help="Pre-configured on cloud. Enter custom key only if using your personal quota."
-    )
-    active_api_key = user_custom_key.strip() if user_custom_key.strip() else default_api_key
-
-    st.markdown("---")
     st.markdown("### 🎓 Output Format")
     summary_mode = st.radio(
         "Select Note Style:",
@@ -133,13 +109,15 @@ with st.sidebar:
         ],
         index=0
     )
+    st.markdown("---")
+    st.caption("🔒 System API configuration managed securely in the cloud.")
 
 # Hero Header Banner
 st.markdown("""
 <div class="hero-container">
-    <div class="badge">⚡ Groq LPU Powered</div>
+    <div class="badge">⚡ Groq LPU Accelerated</div>
     <div class="hero-title">AI YouTube Lecture Digest</div>
-    <div class="hero-desc">Turn lengthy video lectures and tutorials into structured, exam-ready study notes and interactive quizzes in seconds.</div>
+    <div class="hero-desc">Convert technical lectures and tutorials into exam-ready notes, cheat sheets, and practice sets.</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -148,13 +126,13 @@ col_ex_label, col_ex1, col_ex2, col_ex3 = st.columns([1.5, 2, 2, 2])
 with col_ex_label:
     st.markdown("**Try a sample video:**")
 with col_ex1:
-    if st.button("🧠 Neural Networks (3B1B)"):
+    if st.button("🧠 Neural Networks (3B1B)", use_container_width=True):
         st.session_state['url_input_val'] = "https://www.youtube.com/watch?v=aircAruvnKk"
 with col_ex2:
-    if st.button("🐍 Python in 100 Seconds"):
+    if st.button("🐍 Python in 100s", use_container_width=True):
         st.session_state['url_input_val'] = "https://www.youtube.com/watch?v=dhgEAm8384U"
 with col_ex3:
-    if st.button("🌐 Operating Systems"):
+    if st.button("🌐 Operating Systems", use_container_width=True):
         st.session_state['url_input_val'] = "https://www.youtube.com/watch?v=26QPDBe-NB8"
 
 # URL Input Field
@@ -175,7 +153,7 @@ if generate_clicked:
     if not url_input.strip():
         st.error("Please enter a valid YouTube URL.")
     elif not active_api_key:
-        st.error("Missing Groq API Key. Please add it to your Streamlit secrets or sidebar.")
+        st.error("Server API key missing. Please ensure GROQ_API_KEY is configured in Streamlit Secrets.")
     else:
         video_id = extract_video_id(url_input)
         if not video_id:
@@ -191,7 +169,7 @@ if generate_clicked:
                 # Metrics Calculation
                 total_words = len(raw_text.split())
                 summary_words = len(notes.split())
-                reading_time_mins = max(1, round(total_words / 130)) # Avg speaking rate ~130 wpm
+                reading_time_mins = max(1, round(total_words / 130))
                 time_saved_mins = max(1, round(reading_time_mins - (summary_words / 200)))
 
                 st.session_state['summary'] = notes
