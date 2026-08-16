@@ -36,11 +36,11 @@ if "theme_mode" not in st.session_state:
 if "qa_history" not in st.session_state:
     st.session_state["qa_history"] = []
 
-# Top Bar Theme Controls
+# Top Bar Header & Theme Switcher
 col_title, col_toggle = st.columns([5, 1.5])
 with col_toggle:
     theme_selection = st.radio(
-        "Theme",
+        "Theme Toggle",
         options=["🌙 Dark", "☀️ Light"],
         index=0 if st.session_state["theme_mode"] == "Dark" else 1,
         horizontal=True,
@@ -53,179 +53,254 @@ with col_toggle:
 
 is_dark = st.session_state["theme_mode"] == "Dark"
 
-# Theme CSS Injector
-if is_dark:
-    theme_css = """
-    <style>
-        .stApp { background-color: #0B0F19 !important; color: #F1F5F9 !important; }
-        section[data-testid="stSidebar"] { 
-            background-color: #111827 !important; 
-            border-right: 1px solid rgba(255, 255, 255, 0.08) !important; 
-        }
-        header[data-testid="stHeader"] { background-color: transparent !important; }
-        header[data-testid="stHeader"] * { color: #F1F5F9 !important; fill: #F1F5F9 !important; }
-        
-        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown { color: #F1F5F9 !important; }
-        
-        .hero-container {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.18) 0%, rgba(168, 85, 247, 0.1) 100%) !important;
-            border: 1px solid rgba(255, 255, 255, 0.12) !important;
-            border-radius: 16px;
-            padding: 2.2rem 2rem;
-            text-align: center;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-        }
-        .badge {
-            background: rgba(99, 102, 241, 0.25) !important;
-            color: #818CF8 !important;
-            border: 1px solid rgba(99, 102, 241, 0.4) !important;
-        }
-        .metric-card {
-            background: rgba(255, 255, 255, 0.04) !important;
-            border: 1px solid rgba(255, 255, 255, 0.08) !important;
-            border-radius: 12px;
-            padding: 1.2rem;
-            text-align: center;
-        }
-        .metric-value { color: #818CF8 !important; font-size: 1.7rem; font-weight: 800; }
-        .metric-label { color: #94A3B8 !important; font-size: 0.85rem; }
-        
-        /* Form Inputs & Selects */
-        div[data-testid="stTextInput"] input {
-            background-color: #1E293B !important;
-            color: #FFFFFF !important;
-            border: 1px solid rgba(255, 255, 255, 0.15) !important;
-        }
-        div[data-baseweb="select"] > div, div[data-baseweb="select"] ul {
-            background-color: #1E293B !important;
-            color: #FFFFFF !important;
-            border: 1px solid rgba(255, 255, 255, 0.15) !important;
-        }
-        div[data-baseweb="select"] * {
-            color: #FFFFFF !important;
-            fill: #FFFFFF !important;
-        }
-        
-        /* Buttons */
-        button[kind="secondary"] {
-            background-color: #1E293B !important;
-            color: #F1F5F9 !important;
-            border: 1px solid rgba(255, 255, 255, 0.12) !important;
-        }
-        button[kind="secondary"]:hover {
-            background-color: #334155 !important;
-            border-color: #818CF8 !important;
-            color: #FFFFFF !important;
-        }
-        button[kind="primary"] {
-            background: linear-gradient(90deg, #6366F1, #4F46E5) !important;
-            color: #FFFFFF !important;
-            border: none !important;
-        }
-    </style>
-    """
-else:
-    theme_css = """
-    <style>
-        .stApp { background-color: #F8FAFC !important; color: #0F172A !important; }
-        section[data-testid="stSidebar"] { 
-            background-color: #FFFFFF !important; 
-            border-right: 1px solid #E2E8F0 !important; 
-        }
-        
-        /* Fix Streamlit Top-Right Header (Share, Star, Menu) */
-        header[data-testid="stHeader"] { background-color: transparent !important; }
-        header[data-testid="stHeader"] * { 
-            color: #0F172A !important; 
-            fill: #0F172A !important; 
-            opacity: 0.9 !important;
-        }
-        div[data-testid="stToolbar"] * { 
-            color: #0F172A !important; 
-            fill: #0F172A !important; 
-        }
-        
-        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown { color: #0F172A !important; }
-        
-        .hero-container {
-            background: linear-gradient(135deg, #EEF2FF 0%, #FAF5FF 100%) !important;
-            border: 1px solid #C7D2FE !important;
-            border-radius: 16px;
-            padding: 2.2rem 2rem;
-            text-align: center;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.08);
-        }
-        .hero-container h1 { color: #1E1B4B !important; }
-        .hero-container p { color: #475569 !important; }
-        
-        .badge {
-            background: #E0E7FF !important;
-            color: #4338CA !important;
-            border: 1px solid #C7D2FE !important;
-        }
-        .metric-card {
-            background: #FFFFFF !important;
-            border: 1px solid #E2E8F0 !important;
-            border-radius: 12px;
-            padding: 1.2rem;
-            text-align: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.03);
-        }
-        .metric-value { color: #4F46E5 !important; font-size: 1.7rem; font-weight: 800; }
-        .metric-label { color: #64748B !important; font-size: 0.85rem; }
-        
-        /* Inputs & Sidebar Dropdowns */
-        div[data-testid="stTextInput"] input {
-            background-color: #FFFFFF !important;
-            color: #0F172A !important;
-            border: 1px solid #CBD5E1 !important;
-        }
-        div[data-baseweb="select"] > div {
-            background-color: #FFFFFF !important;
-            color: #0F172A !important;
-            border: 1px solid #CBD5E1 !important;
-        }
-        div[data-baseweb="select"] * {
-            color: #0F172A !important;
-            fill: #0F172A !important;
-        }
-        ul[data-baseweb="menu"] {
-            background-color: #FFFFFF !important;
-        }
-        ul[data-baseweb="menu"] li {
-            color: #0F172A !important;
-        }
-        
-        /* Buttons */
-        button[kind="secondary"] {
-            background-color: #FFFFFF !important;
-            color: #1E293B !important;
-            border: 1px solid #CBD5E1 !important;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
-        }
-        button[kind="secondary"]:hover {
-            background-color: #F1F5F9 !important;
-            border-color: #6366F1 !important;
-            color: #4F46E5 !important;
-        }
-        button[kind="primary"] {
-            background: linear-gradient(90deg, #4F46E5, #4338CA) !important;
-            color: #FFFFFF !important;
-            border: none !important;
-            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25) !important;
-        }
-    </style>
-    """
-
-st.markdown(theme_css, unsafe_allow_html=True)
-
-# Shared General Styling
-st.markdown("""
+# ==========================================
+# 1. DEDICATED DARK MODE STYLESHEET
+# ==========================================
+DARK_CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
     * { font-family: 'Plus Jakarta Sans', sans-serif; }
+
+    /* App & Sidebar Base */
+    .stApp {
+        background-color: #0B0F19 !important;
+        color: #F8FAFC !important;
+    }
+    section[data-testid="stSidebar"] {
+        background-color: #111827 !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+    }
+    header[data-testid="stHeader"] {
+        background-color: transparent !important;
+    }
+    header[data-testid="stHeader"] * {
+        color: #F8FAFC !important;
+        fill: #F8FAFC !important;
+    }
+    
+    /* Typography */
+    h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown {
+        color: #F8FAFC !important;
+    }
+
+    /* Hero Banner */
+    .hero-container {
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.12) 100%) !important;
+        border: 1px solid rgba(255, 255, 255, 0.14) !important;
+        border-radius: 16px;
+        padding: 2.2rem 2rem;
+        text-align: center;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+    .badge {
+        background: rgba(99, 102, 241, 0.3) !important;
+        color: #A5B4FC !important;
+        border: 1px solid rgba(99, 102, 241, 0.5) !important;
+    }
+
+    /* Metric Cards */
+    .metric-card {
+        background: rgba(255, 255, 255, 0.05) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 12px;
+        padding: 1.2rem;
+        text-align: center;
+    }
+    .metric-value {
+        color: #818CF8 !important;
+        font-size: 1.7rem;
+        font-weight: 800;
+    }
+    .metric-label {
+        color: #94A3B8 !important;
+        font-size: 0.85rem;
+    }
+
+    /* Text Inputs */
+    div[data-testid="stTextInput"] input {
+        background-color: #1E293B !important;
+        color: #FFFFFF !important;
+        border: 1px solid rgba(255, 255, 255, 0.18) !important;
+        border-radius: 8px;
+    }
+
+    /* Select Dropdowns */
+    div[data-baseweb="select"] > div {
+        background-color: #1E293B !important;
+        color: #FFFFFF !important;
+        border: 1px solid rgba(255, 255, 255, 0.18) !important;
+    }
+    div[data-baseweb="select"] * {
+        color: #FFFFFF !important;
+        fill: #FFFFFF !important;
+    }
+    ul[data-baseweb="menu"] {
+        background-color: #1E293B !important;
+    }
+    ul[data-baseweb="menu"] li {
+        color: #FFFFFF !important;
+    }
+
+    /* Secondary / Sample Buttons */
+    button[kind="secondary"] {
+        background-color: #1E293B !important;
+        color: #F8FAFC !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        border-radius: 8px;
+    }
+    button[kind="secondary"]:hover {
+        background-color: #334155 !important;
+        border-color: #818CF8 !important;
+        color: #FFFFFF !important;
+    }
+
+    /* Primary Action Buttons */
+    button[kind="primary"] {
+        background: linear-gradient(90deg, #6366F1, #4F46E5) !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        border-radius: 8px;
+        box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4) !important;
+    }
+    button[kind="primary"]:hover {
+        background: linear-gradient(90deg, #4F46E5, #4338CA) !important;
+        transform: translateY(-1px);
+    }
+</style>
+"""
+
+# ==========================================
+# 2. DEDICATED LIGHT MODE STYLESHEET
+# ==========================================
+LIGHT_CSS = """
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+    * { font-family: 'Plus Jakarta Sans', sans-serif; }
+
+    /* App & Sidebar Base */
+    .stApp {
+        background-color: #F8FAFC !important;
+        color: #0F172A !important;
+    }
+    section[data-testid="stSidebar"] {
+        background-color: #FFFFFF !important;
+        border-right: 1px solid #E2E8F0 !important;
+    }
+    header[data-testid="stHeader"] {
+        background-color: transparent !important;
+    }
+    header[data-testid="stHeader"] * {
+        color: #0F172A !important;
+        fill: #0F172A !important;
+    }
+    div[data-testid="stToolbar"] * {
+        color: #0F172A !important;
+        fill: #0F172A !important;
+    }
+
+    /* Typography */
+    h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown {
+        color: #0F172A !important;
+    }
+
+    /* Hero Banner */
+    .hero-container {
+        background: linear-gradient(135deg, #EEF2FF 0%, #FAF5FF 100%) !important;
+        border: 1px solid #C7D2FE !important;
+        border-radius: 16px;
+        padding: 2.2rem 2rem;
+        text-align: center;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.08);
+    }
+    .hero-container h1 { color: #1E1B4B !important; }
+    .hero-container p { color: #475569 !important; }
+    .badge {
+        background: #E0E7FF !important;
+        color: #4338CA !important;
+        border: 1px solid #C7D2FE !important;
+    }
+
+    /* Metric Cards */
+    .metric-card {
+        background: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 12px;
+        padding: 1.2rem;
+        text-align: center;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+    }
+    .metric-value {
+        color: #4F46E5 !important;
+        font-size: 1.7rem;
+        font-weight: 800;
+    }
+    .metric-label {
+        color: #64748B !important;
+        font-size: 0.85rem;
+    }
+
+    /* Text Inputs */
+    div[data-testid="stTextInput"] input {
+        background-color: #FFFFFF !important;
+        color: #0F172A !important;
+        border: 1px solid #CBD5E1 !important;
+        border-radius: 8px;
+    }
+
+    /* Select Dropdowns */
+    div[data-baseweb="select"] > div {
+        background-color: #FFFFFF !important;
+        color: #0F172A !important;
+        border: 1px solid #CBD5E1 !important;
+    }
+    div[data-baseweb="select"] * {
+        color: #0F172A !important;
+        fill: #0F172A !important;
+    }
+    ul[data-baseweb="menu"] {
+        background-color: #FFFFFF !important;
+    }
+    ul[data-baseweb="menu"] li {
+        color: #0F172A !important;
+    }
+
+    /* Secondary / Sample Buttons */
+    button[kind="secondary"] {
+        background-color: #FFFFFF !important;
+        color: #1E293B !important;
+        border: 1px solid #CBD5E1 !important;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+        border-radius: 8px;
+    }
+    button[kind="secondary"]:hover {
+        background-color: #F1F5F9 !important;
+        border-color: #6366F1 !important;
+        color: #4F46E5 !important;
+    }
+
+    /* Primary Action Buttons */
+    button[kind="primary"] {
+        background: linear-gradient(90deg, #4F46E5, #4338CA) !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25) !important;
+    }
+    button[kind="primary"]:hover {
+        background: linear-gradient(90deg, #4338CA, #3730A3) !important;
+        transform: translateY(-1px);
+    }
+</style>
+"""
+
+# Inject Selected Theme CSS
+st.markdown(DARK_CSS if is_dark else LIGHT_CSS, unsafe_allow_html=True)
+
+# Shared Core Styles
+st.markdown("""
+<style>
     .badge {
         padding: 0.35rem 0.85rem;
         border-radius: 9999px;
@@ -237,7 +312,6 @@ st.markdown("""
         margin-bottom: 0.6rem;
     }
     .stButton>button {
-        border-radius: 9px;
         font-weight: 600;
         transition: all 0.2s ease-in-out;
     }
