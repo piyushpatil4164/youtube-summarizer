@@ -6,7 +6,13 @@ from ai_service import generate_summary
 from pdf_service import create_pdf
 
 load_dotenv()
-default_api_key = os.getenv("GROQ_API_KEY", "")
+
+# Check Streamlit Cloud Secrets first, then fallback to local .env
+default_api_key = ""
+if "GROQ_API_KEY" in st.secrets:
+    default_api_key = st.secrets["GROQ_API_KEY"]
+else:
+    default_api_key = os.getenv("GROQ_API_KEY", "")
 
 st.set_page_config(
     page_title="Lecture Digest - AI YouTube Summarizer",
@@ -16,18 +22,26 @@ st.set_page_config(
 
 # Custom styling
 st.markdown("""
-    
+    <style>
+    .block-container { padding-top: 2rem; }
+    .stButton>button { width: 100%; border-radius: 8px; font-weight: bold; }
+    </style>
 """, unsafe_allow_html=True)
 
 # Sidebar settings
 with st.sidebar:
     st.header("⚙️ Settings")
-    api_key = st.text_input(
-        "Groq API Key",
+    
+    # Optional override input
+    user_custom_key = st.text_input(
+        "Groq API Key (Optional)",
         type="password",
         value=default_api_key,
-        help="Pre-filled from your .env file or enter manually."
+        help="Pre-configured on the server. You only need to enter a key if you want to use your own personal quota."
     )
+    
+    # Use user input if typed, otherwise fall back to system secret
+    active_api_key = user_custom_key.strip() if user_custom_key.strip() else default_api_key
     
     st.divider()
     summary_mode = st.selectbox(
@@ -55,8 +69,8 @@ with col_btn:
 if generate_clicked:
     if not url_input.strip():
         st.error("Please enter a valid YouTube URL.")
-    elif not api_key.strip():
-        st.error("Groq API Key missing. Please provide a key in the sidebar or .env file.")
+    elif not active_api_key:
+        st.error("Missing Groq API Key. Please add it to your Streamlit secrets or enter it in the sidebar.")
     else:
         video_id = extract_video_id(url_input)
         if not video_id:
@@ -67,7 +81,7 @@ if generate_clicked:
                     raw_text, structured_segments = get_transcript(video_id)
 
                 with st.spinner(f"2/2: Generating '{summary_mode}' with Llama 3.1..."):
-                    summary_result = generate_summary(raw_text, summary_mode, api_key)
+                    summary_result = generate_summary(raw_text, summary_mode, active_api_key)
 
                 # Store in session state
                 st.session_state['summary'] = summary_result
