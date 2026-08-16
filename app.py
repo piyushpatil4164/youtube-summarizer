@@ -1,18 +1,8 @@
 import streamlit as st
-import os
-from dotenv import load_dotenv
+from config import get_groq_api_key
 from transcript_service import extract_video_id, get_transcript
 from ai_service import generate_summary
 from pdf_service import create_pdf
-
-load_dotenv()
-
-# Securely load the API key from Streamlit Cloud Secrets or local .env
-active_api_key = ""
-if "GROQ_API_KEY" in st.secrets:
-    active_api_key = st.secrets["GROQ_API_KEY"]
-else:
-    active_api_key = os.getenv("GROQ_API_KEY", "")
 
 # Page Configuration
 st.set_page_config(
@@ -22,7 +12,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Adaptive Theme CSS
+# Adaptive Theme & Privacy-Friendly CSS
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
@@ -96,7 +86,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Sidebar Configuration (Output format only — No API key shown)
+# Sidebar (Only UI preferences - Zero secrets or key fields)
 with st.sidebar:
     st.markdown("### 🎓 Output Format")
     summary_mode = st.radio(
@@ -110,9 +100,9 @@ with st.sidebar:
         index=0
     )
     st.markdown("---")
-    st.caption("🔒 System API configuration managed securely in the cloud.")
+    st.caption("🔒 System secured via Cloud Secret Management.")
 
-# Hero Header Banner
+# Hero Header
 st.markdown("""
 <div class="hero-container">
     <div class="badge">⚡ Groq LPU Accelerated</div>
@@ -121,7 +111,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Example Video Quick-Select Pills
+# Quick Select Samples
 col_ex_label, col_ex1, col_ex2, col_ex3 = st.columns([1.5, 2, 2, 2])
 with col_ex_label:
     st.markdown("**Try a sample video:**")
@@ -135,7 +125,7 @@ with col_ex3:
     if st.button("🌐 Operating Systems", use_container_width=True):
         st.session_state['url_input_val'] = "https://www.youtube.com/watch?v=26QPDBe-NB8"
 
-# URL Input Field
+# URL Input
 input_default = st.session_state.get('url_input_val', '')
 url_input = st.text_input(
     "Paste YouTube URL:",
@@ -143,30 +133,30 @@ url_input = st.text_input(
     placeholder="e.g. https://www.youtube.com/watch?v=aircAruvnKk"
 )
 
-# Execution Action Button
+# Process Action
 col_btn, _ = st.columns([1, 4])
 with col_btn:
     generate_clicked = st.button("⚡ Generate Notes", type="primary", use_container_width=True)
 
-# Processing Logic
 if generate_clicked:
     if not url_input.strip():
         st.error("Please enter a valid YouTube URL.")
-    elif not active_api_key:
-        st.error("Server API key missing. Please ensure GROQ_API_KEY is configured in Streamlit Secrets.")
     else:
         video_id = extract_video_id(url_input)
         if not video_id:
-            st.error("Invalid YouTube link format. Please check the URL.")
+            st.error("Invalid YouTube URL format.")
         else:
             try:
-                with st.spinner("Extracting transcript and timestamps..."):
+                # Retrieve secure backend key
+                api_key = get_groq_api_key()
+
+                with st.spinner("1/2: Extracting video transcript..."):
                     raw_text, segments = get_transcript(video_id)
 
-                with st.spinner(f"Synthesizing '{summary_mode}' via Llama 3.1..."):
-                    notes = generate_summary(raw_text, summary_mode, active_api_key)
+                with st.spinner(f"2/2: Generating {summary_mode}..."):
+                    notes = generate_summary(raw_text, summary_mode, api_key)
 
-                # Metrics Calculation
+                # Word & Time Calculations
                 total_words = len(raw_text.split())
                 summary_words = len(notes.split())
                 reading_time_mins = max(1, round(total_words / 130))
@@ -179,14 +169,18 @@ if generate_clicked:
                 st.session_state['time_saved'] = time_saved_mins
 
                 st.success("Notes generated successfully!")
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
 
-# Display Output Dashboard
+            except ValueError as ve:
+                st.error(str(ve))
+            except Exception as e:
+                # Mask internal file system and stack traces
+                clean_error = str(e).split("\n")[0]
+                st.error(f"Processing failed: {clean_error}")
+
+# Display Output
 if 'summary' in st.session_state:
     st.markdown("---")
 
-    # Metrics Highlights Bar
     m1, m2, m3 = st.columns(3)
     with m1:
         st.markdown(f"""
@@ -212,7 +206,6 @@ if 'summary' in st.session_state:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Main Split View
     left_view, right_view = st.columns([3, 2], gap="large")
 
     with left_view:
@@ -222,7 +215,6 @@ if 'summary' in st.session_state:
             st.markdown(st.session_state['summary'])
             st.markdown("---")
             
-            # Export Buttons
             exp1, exp2 = st.columns(2)
             with exp1:
                 st.download_button(
