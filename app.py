@@ -1,9 +1,12 @@
 import streamlit as st
 import streamlit.components.v1 as components
-from config import get_groq_api_key
+import os
+from dotenv import load_dotenv
 from transcript_service import extract_video_id, get_transcript
 from ai_service import generate_summary, ask_video_question, generate_mindmap_code
 from pdf_service import create_pdf
+
+load_dotenv()
 
 # Page Configuration
 st.set_page_config(
@@ -13,17 +16,31 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Initialize Session States
+# Safe API Key Loader
+def resolve_api_key() -> str:
+    key = None
+    try:
+        if "GROQ_API_KEY" in st.secrets:
+            key = st.secrets["GROQ_API_KEY"]
+    except Exception:
+        pass
+    if not key:
+        key = os.getenv("GROQ_API_KEY", "")
+    return key.strip() if key else ""
+
+active_api_key = resolve_api_key()
+
+# Initialize Session State
 if "theme_mode" not in st.session_state:
     st.session_state["theme_mode"] = "Dark"
 if "qa_history" not in st.session_state:
     st.session_state["qa_history"] = []
 
-# Top Bar: Title & Theme Switcher
+# Top Bar Theme Controls
 col_title, col_toggle = st.columns([5, 1.5])
 with col_toggle:
     theme_selection = st.radio(
-        "Select Theme",
+        "Theme",
         options=["🌙 Dark", "☀️ Light"],
         index=0 if st.session_state["theme_mode"] == "Dark" else 1,
         horizontal=True,
@@ -36,24 +53,14 @@ with col_toggle:
 
 is_dark = st.session_state["theme_mode"] == "Dark"
 
-# Dynamic Full-Page CSS Injector
+# CSS Styling
 if is_dark:
     theme_css = """
     <style>
-        .stApp {
-            background-color: #0b0f19 !important;
-            color: #f1f5f9 !important;
-        }
-        section[data-testid="stSidebar"] {
-            background-color: #111827 !important;
-            border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
-        }
-        header[data-testid="stHeader"] {
-            background-color: transparent !important;
-        }
-        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {
-            color: #f1f5f9 !important;
-        }
+        .stApp { background-color: #0b0f19 !important; color: #f1f5f9 !important; }
+        section[data-testid="stSidebar"] { background-color: #111827 !important; border-right: 1px solid rgba(255, 255, 255, 0.08) !important; }
+        header[data-testid="stHeader"] { background-color: transparent !important; }
+        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown { color: #f1f5f9 !important; }
         .hero-container {
             background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.12) 100%) !important;
             border: 1px solid rgba(255, 255, 255, 0.12) !important;
@@ -69,39 +76,18 @@ if is_dark:
             padding: 1.2rem;
             text-align: center;
         }
-        .metric-value {
-            color: #818CF8 !important;
-            font-size: 1.7rem;
-            font-weight: 800;
-        }
-        .metric-label {
-            color: #94A3B8 !important;
-            font-size: 0.85rem;
-        }
-        .stTextInput input {
-            background-color: #1e293b !important;
-            color: #ffffff !important;
-            border: 1px solid rgba(255, 255, 255, 0.15) !important;
-        }
+        .metric-value { color: #818CF8 !important; font-size: 1.7rem; font-weight: 800; }
+        .metric-label { color: #94A3B8 !important; font-size: 0.85rem; }
+        .stTextInput input { background-color: #1e293b !important; color: #ffffff !important; border: 1px solid rgba(255, 255, 255, 0.15) !important; }
     </style>
     """
 else:
     theme_css = """
     <style>
-        .stApp {
-            background-color: #F8FAFC !important;
-            color: #0F172A !important;
-        }
-        section[data-testid="stSidebar"] {
-            background-color: #F1F5F9 !important;
-            border-right: 1px solid #E2E8F0 !important;
-        }
-        header[data-testid="stHeader"] {
-            background-color: transparent !important;
-        }
-        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {
-            color: #0F172A !important;
-        }
+        .stApp { background-color: #F8FAFC !important; color: #0F172A !important; }
+        section[data-testid="stSidebar"] { background-color: #F1F5F9 !important; border-right: 1px solid #E2E8F0 !important; }
+        header[data-testid="stHeader"] { background-color: transparent !important; }
+        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown { color: #0F172A !important; }
         .hero-container {
             background: linear-gradient(135deg, #EEF2FF 0%, #FAF5FF 100%) !important;
             border: 1px solid #CBD5E1 !important;
@@ -119,26 +105,13 @@ else:
             text-align: center;
             box-shadow: 0 2px 4px rgba(0,0,0,0.03);
         }
-        .metric-value {
-            color: #4F46E5 !important;
-            font-size: 1.7rem;
-            font-weight: 800;
-        }
-        .metric-label {
-            color: #64748B !important;
-            font-size: 0.85rem;
-        }
-        .stTextInput input {
-            background-color: #FFFFFF !important;
-            color: #0F172A !important;
-            border: 1px solid #CBD5E1 !important;
-        }
+        .metric-value { color: #4F46E5 !important; font-size: 1.7rem; font-weight: 800; }
+        .metric-label { color: #64748B !important; font-size: 0.85rem; }
+        .stTextInput input { background-color: #FFFFFF !important; color: #0F172A !important; border: 1px solid #CBD5E1 !important; }
     </style>
     """
 
 st.markdown(theme_css, unsafe_allow_html=True)
-
-# Shared Styling
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
@@ -156,17 +129,13 @@ st.markdown("""
         margin-bottom: 0.5rem;
         border: 1px solid rgba(99, 102, 241, 0.3);
     }
-    .stButton>button {
-        border-radius: 9px;
-        font-weight: 600;
-    }
+    .stButton>button { border-radius: 9px; font-weight: 600; }
 </style>
 """, unsafe_allow_html=True)
 
-# Sidebar Configuration
+# Sidebar
 with st.sidebar:
     st.markdown("### ⚙️ Study Controls")
-    
     summary_mode = st.selectbox(
         "Output Format:",
         [
@@ -177,7 +146,6 @@ with st.sidebar:
             "Formula & Keyword Cheat Sheet"
         ]
     )
-    
     col_opt1, col_opt2 = st.columns(2)
     with col_opt1:
         detail_level = st.selectbox("Depth:", ["Standard", "Concise", "In-Depth"])
@@ -185,9 +153,9 @@ with st.sidebar:
         output_lang = st.selectbox("Language:", ["English", "Hindi", "Hinglish", "Spanish", "French"])
 
     st.markdown("---")
-    st.caption("🔒 System API configuration managed securely.")
+    st.caption("🔒 System secured via Cloud Secret Management.")
 
-# Hero Header
+# Header Banner
 st.markdown("""
 <div class="hero-container">
     <div class="badge">⚡ Groq LPU Accelerated</div>
@@ -196,7 +164,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Quick Sample Pills
+# Sample Links
 col_lbl, c1, c2, c3 = st.columns([1.5, 2, 2, 2])
 with col_lbl:
     st.markdown("**Sample Lectures:**")
@@ -210,7 +178,7 @@ with c3:
     if st.button("🌐 Operating Systems", use_container_width=True):
         st.session_state['url_input_val'] = "https://www.youtube.com/watch?v=26QPDBe-NB8"
 
-# URL Input
+# Video Input
 input_val = st.session_state.get('url_input_val', '')
 url_input = st.text_input("Enter YouTube Video URL:", value=input_val, placeholder="https://www.youtube.com/watch?v=aircAruvnKk")
 
@@ -218,23 +186,22 @@ col_btn, _ = st.columns([1.5, 4])
 with col_btn:
     generate_clicked = st.button("🚀 Process & Generate", type="primary", use_container_width=True)
 
-# Processing Logic
 if generate_clicked:
     if not url_input.strip():
         st.error("Please enter a valid YouTube URL.")
+    elif not active_api_key:
+        st.error("GROQ_API_KEY is not configured in Streamlit Secrets. Please add your key under app Settings > Secrets.")
     else:
         video_id = extract_video_id(url_input)
         if not video_id:
             st.error("Invalid YouTube URL format.")
         else:
             try:
-                api_key = get_groq_api_key()
-
-                with st.spinner("1/2: Extracting video transcript..."):
+                with st.spinner("Extracting transcript and subtitles..."):
                     raw_text, segments = get_transcript(video_id)
 
-                with st.spinner(f"2/2: Generating {summary_mode}..."):
-                    notes = generate_summary(raw_text, summary_mode, api_key, detail_level, output_lang)
+                with st.spinner(f"Generating {summary_mode}..."):
+                    notes = generate_summary(raw_text, summary_mode, active_api_key, detail_level, output_lang)
 
                 total_words = len(raw_text.split())
                 summary_words = len(notes.split())
@@ -251,14 +218,12 @@ if generate_clicked:
 
                 st.success("Study assets generated successfully!")
             except Exception as e:
-                clean_err = str(e).split("\n")[0]
-                st.error(f"Error: {clean_err}")
+                st.error(f"{str(e)}")
 
-# Output Section
+# Results Display
 if 'summary' in st.session_state:
     st.markdown("---")
     
-    # Analytics Metrics
     m1, m2, m3 = st.columns(3)
     with m1:
         st.markdown(f"""
@@ -294,7 +259,6 @@ if 'summary' in st.session_state:
             "📜 Searchable Subtitles"
         ])
 
-        # TAB 1: AI Notes & Downloads
         with tab_notes:
             st.markdown(st.session_state['summary'])
             st.markdown("---")
@@ -317,28 +281,24 @@ if 'summary' in st.session_state:
                     use_container_width=True
                 )
 
-        # TAB 2: Chat with Video
         with tab_chat:
             st.subheader("💬 Ask Doubts from this Lecture")
-            st.caption("Ask questions about equations, concepts, or timestamps discussed in this video.")
-            
             user_q = st.text_input("Ask a question:", placeholder="e.g., Explain the algorithm mentioned in the beginning", key="chat_input_field")
             if st.button("Ask AI Assistant"):
                 if user_q.strip():
                     with st.spinner("Searching video content..."):
-                        ans = ask_video_question(st.session_state['raw_text'], user_q, get_groq_api_key())
+                        ans = ask_video_question(st.session_state['raw_text'], user_q, active_api_key)
                         st.session_state['qa_history'].append({"q": user_q, "a": ans})
 
             for chat in reversed(st.session_state['qa_history']):
                 st.markdown(f"**Q:** {chat['q']}")
                 st.info(f"**A:** {chat['a']}")
 
-        # TAB 3: Visual Mind Map
         with tab_mindmap:
             st.subheader("🗺️ Hierarchical Mind Map")
             if st.button("Generate Visual Map"):
                 with st.spinner("Generating flowchart structure..."):
-                    mm_code = generate_mindmap_code(st.session_state['raw_text'], get_groq_api_key())
+                    mm_code = generate_mindmap_code(st.session_state['raw_text'], active_api_key)
                     st.session_state['mindmap'] = mm_code
 
             if st.session_state.get('mindmap'):
@@ -353,16 +313,13 @@ if 'summary' in st.session_state:
                 """
                 components.html(mermaid_html, height=450, scrolling=True)
 
-        # TAB 4: Searchable Subtitle Navigator
         with tab_transcript:
             st.subheader("📜 Searchable Subtitles")
-            search_term = st.text_input("🔍 Filter keywords in subtitles:", placeholder="e.g., gradient descent")
-            
+            search_term = st.text_input("🔍 Filter keywords:", placeholder="e.g., gradient descent")
             filtered = [
                 s for s in st.session_state['segments'] 
                 if not search_term or search_term.lower() in s['text'].lower()
             ]
-            
             st.caption(f"Showing {len(filtered)} matching segments")
             for seg in filtered[:120]:
                 st.markdown(f"**`{seg['timestamp']}`** : {seg['text']}")
