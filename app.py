@@ -13,40 +13,140 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Initialize Session State
-if "theme" not in st.session_state:
-    st.session_state["theme"] = "Dark"
+# Initialize Session States
+if "theme_mode" not in st.session_state:
+    st.session_state["theme_mode"] = "Dark"
 if "qa_history" not in st.session_state:
     st.session_state["qa_history"] = []
 
-# Theme-Adaptive CSS
-is_dark = st.session_state["theme"] == "Dark"
-bg_color = "#0e1117" if is_dark else "#FFFFFF"
-card_bg = "rgba(255, 255, 255, 0.05)" if is_dark else "rgba(0, 0, 0, 0.03)"
-border_color = "rgba(255, 255, 255, 0.1)" if is_dark else "rgba(0, 0, 0, 0.1)"
-text_color = "#FAFAFA" if is_dark else "#1E293B"
+# Top Bar: Title & Theme Switcher
+col_title, col_toggle = st.columns([5, 1.5])
+with col_toggle:
+    theme_selection = st.radio(
+        "Select Theme",
+        options=["🌙 Dark", "☀️ Light"],
+        index=0 if st.session_state["theme_mode"] == "Dark" else 1,
+        horizontal=True,
+        label_visibility="collapsed"
+    )
+    chosen_mode = "Dark" if "Dark" in theme_selection else "Light"
+    if chosen_mode != st.session_state["theme_mode"]:
+        st.session_state["theme_mode"] = chosen_mode
+        st.rerun()
 
-st.markdown(f"""
+is_dark = st.session_state["theme_mode"] == "Dark"
+
+# Dynamic Full-Page CSS Injector
+if is_dark:
+    theme_css = """
+    <style>
+        .stApp {
+            background-color: #0b0f19 !important;
+            color: #f1f5f9 !important;
+        }
+        section[data-testid="stSidebar"] {
+            background-color: #111827 !important;
+            border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+        }
+        header[data-testid="stHeader"] {
+            background-color: transparent !important;
+        }
+        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {
+            color: #f1f5f9 !important;
+        }
+        .hero-container {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.12) 100%) !important;
+            border: 1px solid rgba(255, 255, 255, 0.12) !important;
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        .metric-card {
+            background: rgba(255, 255, 255, 0.04) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08) !important;
+            border-radius: 12px;
+            padding: 1.2rem;
+            text-align: center;
+        }
+        .metric-value {
+            color: #818CF8 !important;
+            font-size: 1.7rem;
+            font-weight: 800;
+        }
+        .metric-label {
+            color: #94A3B8 !important;
+            font-size: 0.85rem;
+        }
+        .stTextInput input {
+            background-color: #1e293b !important;
+            color: #ffffff !important;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        }
+    </style>
+    """
+else:
+    theme_css = """
+    <style>
+        .stApp {
+            background-color: #F8FAFC !important;
+            color: #0F172A !important;
+        }
+        section[data-testid="stSidebar"] {
+            background-color: #F1F5F9 !important;
+            border-right: 1px solid #E2E8F0 !important;
+        }
+        header[data-testid="stHeader"] {
+            background-color: transparent !important;
+        }
+        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown {
+            color: #0F172A !important;
+        }
+        .hero-container {
+            background: linear-gradient(135deg, #EEF2FF 0%, #FAF5FF 100%) !important;
+            border: 1px solid #CBD5E1 !important;
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+        .metric-card {
+            background: #FFFFFF !important;
+            border: 1px solid #E2E8F0 !important;
+            border-radius: 12px;
+            padding: 1.2rem;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+        }
+        .metric-value {
+            color: #4F46E5 !important;
+            font-size: 1.7rem;
+            font-weight: 800;
+        }
+        .metric-label {
+            color: #64748B !important;
+            font-size: 0.85rem;
+        }
+        .stTextInput input {
+            background-color: #FFFFFF !important;
+            color: #0F172A !important;
+            border: 1px solid #CBD5E1 !important;
+        }
+    </style>
+    """
+
+st.markdown(theme_css, unsafe_allow_html=True)
+
+# Shared Styling
+st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
-    
-    * {{
-        font-family: 'Plus Jakarta Sans', sans-serif;
-    }}
-    
-    .hero-container {{
-        background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.1) 100%);
-        border: 1px solid {border_color};
-        padding: 2rem;
-        border-radius: 16px;
-        margin-bottom: 1.5rem;
-        text-align: center;
-    }}
-    
-    .badge {{
+    * { font-family: 'Plus Jakarta Sans', sans-serif; }
+    .badge {
         background: rgba(99, 102, 241, 0.2);
-        color: #818CF8;
-        padding: 0.3rem 0.8rem;
+        color: #6366F1;
+        padding: 0.3rem 0.85rem;
         border-radius: 9999px;
         font-size: 0.78rem;
         font-weight: 700;
@@ -54,50 +154,16 @@ st.markdown(f"""
         text-transform: uppercase;
         display: inline-block;
         margin-bottom: 0.5rem;
-    }}
-    
-    .metric-card {{
-        background: {card_bg};
-        border: 1px solid {border_color};
-        border-radius: 12px;
-        padding: 1rem;
-        text-align: center;
-    }}
-    
-    .metric-value {{
-        font-size: 1.6rem;
-        font-weight: 700;
-        color: #6366F1;
-    }}
-    
-    .metric-label {{
-        font-size: 0.8rem;
-        opacity: 0.8;
-        margin-top: 0.2rem;
-    }}
-    
-    .stButton>button {{
-        border-radius: 8px;
+        border: 1px solid rgba(99, 102, 241, 0.3);
+    }
+    .stButton>button {
+        border-radius: 9px;
         font-weight: 600;
-    }}
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# Top Bar: Theme Switcher & Status
-col_head, col_theme = st.columns([5, 1])
-with col_theme:
-    selected_theme = st.radio(
-        "Theme",
-        options=["Dark", "Light"],
-        horizontal=True,
-        index=0 if is_dark else 1,
-        label_visibility="collapsed"
-    )
-    if selected_theme != st.session_state["theme"]:
-        st.session_state["theme"] = selected_theme
-        st.rerun()
-
-# Sidebar: Advanced Customization
+# Sidebar Configuration
 with st.sidebar:
     st.markdown("### ⚙️ Study Controls")
     
@@ -119,22 +185,18 @@ with st.sidebar:
         output_lang = st.selectbox("Language:", ["English", "Hindi", "Hinglish", "Spanish", "French"])
 
     st.markdown("---")
-    st.markdown("### 💡 Quick Tips")
-    st.caption("• Use **Practice Quiz** before exams for rapid recall.")
-    st.caption("• Use **Chat with Video** tab to resolve specific equations or questions.")
-    st.markdown("---")
-    st.caption("🔒 Secured via Cloud Secret Management.")
+    st.caption("🔒 System API configuration managed securely.")
 
 # Hero Header
 st.markdown("""
 <div class="hero-container">
     <div class="badge">⚡ Groq LPU Accelerated</div>
-    <h1 style="margin: 0.2rem 0; font-weight: 800; font-size: 2.2rem;">AI YouTube Lecture Digest</h1>
-    <p style="margin: 0; opacity: 0.85; font-size: 0.95rem;">Transform technical lectures and tutorials into structured notes, mind maps, quizzes, and searchable transcripts.</p>
+    <h1 style="margin: 0.2rem 0; font-weight: 800; font-size: 2.3rem;">AI YouTube Lecture Digest</h1>
+    <p style="margin: 0; opacity: 0.85; font-size: 0.95rem;">Convert video lectures into structured notes, mind maps, quizzes, and searchable subtitles.</p>
 </div>
 """, unsafe_allow_html=True)
 
-# Quick Samples
+# Quick Sample Pills
 col_lbl, c1, c2, c3 = st.columns([1.5, 2, 2, 2])
 with col_lbl:
     st.markdown("**Sample Lectures:**")
@@ -156,7 +218,7 @@ col_btn, _ = st.columns([1.5, 4])
 with col_btn:
     generate_clicked = st.button("🚀 Process & Generate", type="primary", use_container_width=True)
 
-# Generation Execution
+# Processing Logic
 if generate_clicked:
     if not url_input.strip():
         st.error("Please enter a valid YouTube URL.")
@@ -168,10 +230,10 @@ if generate_clicked:
             try:
                 api_key = get_groq_api_key()
 
-                with st.spinner("Extracting transcript and subtitles..."):
+                with st.spinner("1/2: Extracting video transcript..."):
                     raw_text, segments = get_transcript(video_id)
 
-                with st.spinner(f"Generating {summary_mode}..."):
+                with st.spinner(f"2/2: Generating {summary_mode}..."):
                     notes = generate_summary(raw_text, summary_mode, api_key, detail_level, output_lang)
 
                 total_words = len(raw_text.split())
@@ -209,7 +271,7 @@ if 'summary' in st.session_state:
         st.markdown(f"""
         <div class="metric-card">
             <div class="metric-value">~{st.session_state.get('time_saved', 0)} mins</div>
-            <div class="metric-label">Time Saved</div>
+            <div class="metric-label">Estimated Time Saved</div>
         </div>
         """, unsafe_allow_html=True)
     with m3:
@@ -255,12 +317,12 @@ if 'summary' in st.session_state:
                     use_container_width=True
                 )
 
-        # TAB 2: Chat with Video Q&A
+        # TAB 2: Chat with Video
         with tab_chat:
             st.subheader("💬 Ask Doubts from this Lecture")
             st.caption("Ask questions about equations, concepts, or timestamps discussed in this video.")
             
-            user_q = st.text_input("Ask a question:", placeholder="e.g., What was the main assumption in step 2?", key="chat_input_field")
+            user_q = st.text_input("Ask a question:", placeholder="e.g., Explain the algorithm mentioned in the beginning", key="chat_input_field")
             if st.button("Ask AI Assistant"):
                 if user_q.strip():
                     with st.spinner("Searching video content..."):
@@ -305,6 +367,6 @@ if 'summary' in st.session_state:
             for seg in filtered[:120]:
                 st.markdown(f"**`{seg['timestamp']}`** : {seg['text']}")
 
-    with right_col:
+    with right_view:
         st.subheader("📺 Video Player")
         st.video(f"https://www.youtube.com/watch?v={st.session_state['video_id']}")
