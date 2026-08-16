@@ -1,0 +1,27 @@
+# Security & Environment Variables
+.env
+.env.local
+.env.*
+secrets.toml
+*.pem
+*.key
+
+# Python Virtual Environments
+venv/
+env/
+ENV/
+.venv/
+
+# Byte-compiled / Cache files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Streamlit Local Secrets & Caches
+.streamlit/secrets.toml
+.streamlit/cache/
+
+# OS-specific metadata
+.DS_Store
+Thumbs.db
