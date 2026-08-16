@@ -1,6 +1,6 @@
+import os
 import streamlit as st
 import streamlit.components.v1 as components
-import os
 from dotenv import load_dotenv
 from transcript_service import extract_video_id, get_transcript
 from ai_service import generate_summary, ask_video_question, generate_mindmap_code
@@ -16,7 +16,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Safe API Key Loader
+# API Key Resolution
 def resolve_api_key() -> str:
     key = None
     try:
@@ -30,7 +30,7 @@ def resolve_api_key() -> str:
 
 active_api_key = resolve_api_key()
 
-# Initialize Session State
+# Session State Initialization
 if "theme_mode" not in st.session_state:
     st.session_state["theme_mode"] = "Dark"
 if "qa_history" not in st.session_state:
@@ -53,21 +53,31 @@ with col_toggle:
 
 is_dark = st.session_state["theme_mode"] == "Dark"
 
-# CSS Styling
+# Theme CSS Injector
 if is_dark:
     theme_css = """
     <style>
-        .stApp { background-color: #0b0f19 !important; color: #f1f5f9 !important; }
-        section[data-testid="stSidebar"] { background-color: #111827 !important; border-right: 1px solid rgba(255, 255, 255, 0.08) !important; }
+        .stApp { background-color: #0B0F19 !important; color: #F1F5F9 !important; }
+        section[data-testid="stSidebar"] { 
+            background-color: #111827 !important; 
+            border-right: 1px solid rgba(255, 255, 255, 0.08) !important; 
+        }
         header[data-testid="stHeader"] { background-color: transparent !important; }
-        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown { color: #f1f5f9 !important; }
+        h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown { color: #F1F5F9 !important; }
+        
         .hero-container {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.12) 100%) !important;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.18) 0%, rgba(168, 85, 247, 0.1) 100%) !important;
             border: 1px solid rgba(255, 255, 255, 0.12) !important;
             border-radius: 16px;
-            padding: 2rem;
+            padding: 2.2rem 2rem;
             text-align: center;
             margin-bottom: 1.5rem;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        .badge {
+            background: rgba(99, 102, 241, 0.25) !important;
+            color: #818CF8 !important;
+            border: 1px solid rgba(99, 102, 241, 0.4) !important;
         }
         .metric-card {
             background: rgba(255, 255, 255, 0.04) !important;
@@ -78,24 +88,68 @@ if is_dark:
         }
         .metric-value { color: #818CF8 !important; font-size: 1.7rem; font-weight: 800; }
         .metric-label { color: #94A3B8 !important; font-size: 0.85rem; }
-        .stTextInput input { background-color: #1e293b !important; color: #ffffff !important; border: 1px solid rgba(255, 255, 255, 0.15) !important; }
+        
+        /* Form Inputs & Selects */
+        div[data-testid="stTextInput"] input {
+            background-color: #1E293B !important;
+            color: #FFFFFF !important;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        }
+        div[data-baseweb="select"] > div {
+            background-color: #1E293B !important;
+            color: #FFFFFF !important;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        }
+        div[data-baseweb="select"] * {
+            color: #FFFFFF !important;
+        }
+        
+        /* Secondary / Sample Buttons */
+        button[kind="secondary"] {
+            background-color: #1E293B !important;
+            color: #F1F5F9 !important;
+            border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        }
+        button[kind="secondary"]:hover {
+            background-color: #334155 !important;
+            border-color: #818CF8 !important;
+            color: #FFFFFF !important;
+        }
+        
+        /* Primary Action Button */
+        button[kind="primary"] {
+            background: linear-gradient(90deg, #6366F1, #4F46E5) !important;
+            color: #FFFFFF !important;
+            border: none !important;
+        }
     </style>
     """
 else:
     theme_css = """
     <style>
         .stApp { background-color: #F8FAFC !important; color: #0F172A !important; }
-        section[data-testid="stSidebar"] { background-color: #F1F5F9 !important; border-right: 1px solid #E2E8F0 !important; }
+        section[data-testid="stSidebar"] { 
+            background-color: #FFFFFF !important; 
+            border-right: 1px solid #E2E8F0 !important; 
+        }
         header[data-testid="stHeader"] { background-color: transparent !important; }
         h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown { color: #0F172A !important; }
+        
         .hero-container {
             background: linear-gradient(135deg, #EEF2FF 0%, #FAF5FF 100%) !important;
-            border: 1px solid #CBD5E1 !important;
+            border: 1px solid #C7D2FE !important;
             border-radius: 16px;
-            padding: 2rem;
+            padding: 2.2rem 2rem;
             text-align: center;
             margin-bottom: 1.5rem;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.08);
+        }
+        .hero-container h1 { color: #1E1B4B !important; }
+        .hero-container p { color: #475569 !important; }
+        .badge {
+            background: #E0E7FF !important;
+            color: #4338CA !important;
+            border: 1px solid #C7D2FE !important;
         }
         .metric-card {
             background: #FFFFFF !important;
@@ -107,33 +161,71 @@ else:
         }
         .metric-value { color: #4F46E5 !important; font-size: 1.7rem; font-weight: 800; }
         .metric-label { color: #64748B !important; font-size: 0.85rem; }
-        .stTextInput input { background-color: #FFFFFF !important; color: #0F172A !important; border: 1px solid #CBD5E1 !important; }
+        
+        /* Form Inputs & Selects */
+        div[data-testid="stTextInput"] input {
+            background-color: #FFFFFF !important;
+            color: #0F172A !important;
+            border: 1px solid #CBD5E1 !important;
+        }
+        div[data-baseweb="select"] > div {
+            background-color: #FFFFFF !important;
+            color: #0F172A !important;
+            border: 1px solid #CBD5E1 !important;
+        }
+        div[data-baseweb="select"] * {
+            color: #0F172A !important;
+        }
+        
+        /* Secondary / Sample Buttons */
+        button[kind="secondary"] {
+            background-color: #FFFFFF !important;
+            color: #1E293B !important;
+            border: 1px solid #CBD5E1 !important;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04) !important;
+        }
+        button[kind="secondary"]:hover {
+            background-color: #F1F5F9 !important;
+            border-color: #6366F1 !important;
+            color: #4F46E5 !important;
+        }
+        
+        /* Primary Action Button */
+        button[kind="primary"] {
+            background: linear-gradient(90deg, #4F46E5, #4338CA) !important;
+            color: #FFFFFF !important;
+            border: none !important;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25) !important;
+        }
     </style>
     """
 
 st.markdown(theme_css, unsafe_allow_html=True)
+
+# Shared General Styling
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
     * { font-family: 'Plus Jakarta Sans', sans-serif; }
     .badge {
-        background: rgba(99, 102, 241, 0.2);
-        color: #6366F1;
-        padding: 0.3rem 0.85rem;
+        padding: 0.35rem 0.85rem;
         border-radius: 9999px;
         font-size: 0.78rem;
         font-weight: 700;
         letter-spacing: 0.05em;
         text-transform: uppercase;
         display: inline-block;
-        margin-bottom: 0.5rem;
-        border: 1px solid rgba(99, 102, 241, 0.3);
+        margin-bottom: 0.6rem;
     }
-    .stButton>button { border-radius: 9px; font-weight: 600; }
+    .stButton>button {
+        border-radius: 9px;
+        font-weight: 600;
+        transition: all 0.2s ease-in-out;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# Sidebar
+# Sidebar Configuration
 with st.sidebar:
     st.markdown("### ⚙️ Study Controls")
     summary_mode = st.selectbox(
@@ -160,11 +252,11 @@ st.markdown("""
 <div class="hero-container">
     <div class="badge">⚡ Groq LPU Accelerated</div>
     <h1 style="margin: 0.2rem 0; font-weight: 800; font-size: 2.3rem;">AI YouTube Lecture Digest</h1>
-    <p style="margin: 0; opacity: 0.85; font-size: 0.95rem;">Convert video lectures into structured notes, mind maps, quizzes, and searchable subtitles.</p>
+    <p style="margin: 0; font-size: 0.95rem;">Convert video lectures into structured notes, mind maps, quizzes, and searchable subtitles.</p>
 </div>
 """, unsafe_allow_html=True)
 
-# Sample Links
+# Quick Sample Links
 col_lbl, c1, c2, c3 = st.columns([1.5, 2, 2, 2])
 with col_lbl:
     st.markdown("**Sample Lectures:**")
@@ -186,6 +278,7 @@ col_btn, _ = st.columns([1.5, 4])
 with col_btn:
     generate_clicked = st.button("🚀 Process & Generate", type="primary", use_container_width=True)
 
+# Processing Logic
 if generate_clicked:
     if not url_input.strip():
         st.error("Please enter a valid YouTube URL.")
