@@ -53,15 +53,12 @@ with col_toggle:
 
 is_dark = st.session_state["theme_mode"] == "Dark"
 
-# ==========================================
-# 1. DEDICATED DARK MODE STYLESHEET
-# ==========================================
+# 1. Dedicated Dark Mode Stylesheet
 DARK_CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
     * { font-family: 'Plus Jakarta Sans', sans-serif; }
 
-    /* App & Sidebar Base */
     .stApp {
         background-color: #0B0F19 !important;
         color: #F8FAFC !important;
@@ -78,12 +75,10 @@ DARK_CSS = """
         fill: #F8FAFC !important;
     }
     
-    /* Typography */
     h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown {
         color: #F8FAFC !important;
     }
 
-    /* Hero Banner */
     .hero-container {
         background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.12) 100%) !important;
         border: 1px solid rgba(255, 255, 255, 0.14) !important;
@@ -99,7 +94,6 @@ DARK_CSS = """
         border: 1px solid rgba(99, 102, 241, 0.5) !important;
     }
 
-    /* Metric Cards */
     .metric-card {
         background: rgba(255, 255, 255, 0.05) !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
@@ -117,7 +111,6 @@ DARK_CSS = """
         font-size: 0.85rem;
     }
 
-    /* Text Inputs */
     div[data-testid="stTextInput"] input {
         background-color: #1E293B !important;
         color: #FFFFFF !important;
@@ -125,7 +118,6 @@ DARK_CSS = """
         border-radius: 8px;
     }
 
-    /* Select Dropdowns */
     div[data-baseweb="select"] > div {
         background-color: #1E293B !important;
         color: #FFFFFF !important;
@@ -142,7 +134,6 @@ DARK_CSS = """
         color: #FFFFFF !important;
     }
 
-    /* Secondary / Sample Buttons */
     button[kind="secondary"] {
         background-color: #1E293B !important;
         color: #F8FAFC !important;
@@ -155,7 +146,6 @@ DARK_CSS = """
         color: #FFFFFF !important;
     }
 
-    /* Primary Action Buttons */
     button[kind="primary"] {
         background: linear-gradient(90deg, #6366F1, #4F46E5) !important;
         color: #FFFFFF !important;
@@ -170,15 +160,12 @@ DARK_CSS = """
 </style>
 """
 
-# ==========================================
-# 2. DEDICATED LIGHT MODE STYLESHEET
-# ==========================================
+# 2. Dedicated Light Mode Stylesheet
 LIGHT_CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
     * { font-family: 'Plus Jakarta Sans', sans-serif; }
 
-    /* App & Sidebar Base */
     .stApp {
         background-color: #F8FAFC !important;
         color: #0F172A !important;
@@ -199,12 +186,10 @@ LIGHT_CSS = """
         fill: #0F172A !important;
     }
 
-    /* Typography */
     h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown {
         color: #0F172A !important;
     }
 
-    /* Hero Banner */
     .hero-container {
         background: linear-gradient(135deg, #EEF2FF 0%, #FAF5FF 100%) !important;
         border: 1px solid #C7D2FE !important;
@@ -222,7 +207,6 @@ LIGHT_CSS = """
         border: 1px solid #C7D2FE !important;
     }
 
-    /* Metric Cards */
     .metric-card {
         background: #FFFFFF !important;
         border: 1px solid #E2E8F0 !important;
@@ -241,7 +225,6 @@ LIGHT_CSS = """
         font-size: 0.85rem;
     }
 
-    /* Text Inputs */
     div[data-testid="stTextInput"] input {
         background-color: #FFFFFF !important;
         color: #0F172A !important;
@@ -249,7 +232,6 @@ LIGHT_CSS = """
         border-radius: 8px;
     }
 
-    /* Select Dropdowns */
     div[data-baseweb="select"] > div {
         background-color: #FFFFFF !important;
         color: #0F172A !important;
@@ -266,7 +248,6 @@ LIGHT_CSS = """
         color: #0F172A !important;
     }
 
-    /* Secondary / Sample Buttons */
     button[kind="secondary"] {
         background-color: #FFFFFF !important;
         color: #1E293B !important;
@@ -280,7 +261,6 @@ LIGHT_CSS = """
         color: #4F46E5 !important;
     }
 
-    /* Primary Action Buttons */
     button[kind="primary"] {
         background: linear-gradient(90deg, #4F46E5, #4338CA) !important;
         color: #FFFFFF !important;
@@ -320,7 +300,7 @@ st.markdown("""
 
 # Sidebar Configuration
 with st.sidebar:
-    st.markdown("### ⚙️ Study Controls")
+    st.markdown("### 🛠️ Study Controls")
     summary_mode = st.selectbox(
         "Output Format:",
         [
