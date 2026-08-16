@@ -1,110 +1,94 @@
-import os
-import time
 from groq import Groq
 
-def split_text_into_chunks(text: str, max_chars: int = 10000) -> list[str]:
-    """Splits long text into manageable chunks to stay well within Groq TPM limits."""
-    words = text.split()
-    chunks = []
-    current_chunk = []
-    current_length = 0
-
-    for word in words:
-        current_chunk.append(word)
-        current_length += len(word) + 1
-        if current_length >= max_chars:
-            chunks.append(" ".join(current_chunk))
-            current_chunk = []
-            current_length = 0
-
-    if current_chunk:
-        chunks.append(" ".join(current_chunk))
-
-    return chunks
-
-
-def generate_summary(transcript_text: str, mode: str, api_key: str | None = None) -> str:
-    """
-    Generates structured educational notes from video transcripts with automatic
-    chunk handling to stay within token limits.
-    """
-    resolved_key = api_key or os.getenv("GROQ_API_KEY")
-    if not resolved_key:
-        raise ValueError("API Key is missing. Please provide a valid Groq API Key.")
-
-    client = Groq(api_key=resolved_key)
-
+def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "Standard", language: str = "English") -> str:
+    """Generates structured notes based on selected study mode, detail level, and language."""
+    client = Groq(api_key=api_key)
+    
+    # Truncate to avoid context window overflow
+    processed_text = text[:30000]
+    
     prompts = {
-        "Executive Summary": (
-            "Provide a concise executive summary of the lecture. Structure with:\n"
-            "1. **Core Objective & Main Premise**\n"
-            "2. **Top 3–5 Key Takeaways**\n"
-            "3. **Concluding Thoughts**"
-        ),
         "Detailed Study Notes": (
-            "Act as an expert academic tutor. Create comprehensive, structured study notes from this lecture transcript:\n"
-            "1. **Overview & High-Level Summary**\n"
-            "2. **Detailed Topic-by-Topic Breakdown** (with definitions and clear explanations)\n"
-            "3. **Key Concepts & Terminology Cheat Sheet**\n"
-            "4. **Important Review Questions with Answers**"
+            f"You are an expert university professor. Create comprehensive, exam-ready study notes from this lecture transcript.\n"
+            f"Target Language: {language}\n"
+            f"Detail Level: {detail_level}\n\n"
+            "Structure your response strictly as follows:\n"
+            "## 📌 Core Concept & Overview\n(2-3 clear introductory paragraphs)\n\n"
+            "## 🔑 Key Topics & Technical Deep-Dive\n(Use bullet points, bold terms, and clear subheadings)\n\n"
+            "## 📐 Formulas, Definitions & Rules\n(List all key terms, laws, and equations)\n\n"
+            "## 💡 Practical Examples & Applications\n(Concrete real-world use cases mentioned)\n\n"
+            "## ❓ Potential Exam Questions\n(3-5 challenging questions with brief answers)"
+        ),
+        "Executive Summary": (
+            f"You are a lead technical researcher. Provide a high-level executive briefing of this video in {language}.\n"
+            f"Detail Level: {detail_level}\n\n"
+            "Include: \n"
+            "- **Problem Statement / Context**\n"
+            "- **Key Innovations / Takeaways**\n"
+            "- **Strategic Implications / Conclusion**"
         ),
         "Actionable Bullet Points": (
-            "Extract all actionable insights, key steps, and essential takeaways into a clean, hierarchical bulleted list."
+            f"Extract the most important points, step-by-step instructions, and key facts from this transcript in {language}.\n"
+            f"Detail Level: {detail_level}\n"
+            "Use hierarchical bullet points with bold keywords."
         ),
         "Practice Quiz & Flashcards": (
-            "Generate an interactive revision set based on the lecture:\n"
-            "- 5 Multiple Choice Questions (include Question, Options A-D, Correct Answer, and a brief explanation)\n"
-            "- 5 Short Flashcard Concept Questions with direct answers."
+            f"Create a revision quiz and flashcard set in {language} from this transcript.\n\n"
+            "### 🧠 Multiple Choice Questions (5 Questions)\n"
+            "Provide 4 options per question, clearly marking the correct answer with an explanation.\n\n"
+            "### 🗂️ Flashcard Deck (5 Key Concepts)\n"
+            "Format as: **Front (Term/Question)** -> **Back (Definition/Answer)**"
+        ),
+        "Formula & Keyword Cheat Sheet": (
+            f"Extract all technical terminology, definitions, and mathematical/scientific formulas from this transcript in {language}.\n"
+            "Format as a clean reference table or categorized list."
         )
     }
 
     selected_prompt = prompts.get(mode, prompts["Detailed Study Notes"])
 
-    # If transcript is long, summarize chunks first
-    chunks = split_text_into_chunks(transcript_text, max_chars=9000)
-
-    if len(chunks) == 1:
-        text_to_process = chunks[0]
-    else:
-        intermediate_summaries = []
-        for i, chunk in enumerate(chunks[:3]):  # Process top key sections safely
-            resp = client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=[
-                    {"role": "system", "content": "Extract the key educational concepts and facts from this section."},
-                    {"role": "user", "content": f"Lecture Section {i+1}:\n{chunk}"}
-                ],
-                max_tokens=600,
-                temperature=0.2
-            )
-            intermediate_summaries.append(resp.choices[0].message.content.strip())
-            time.sleep(0.5)
-
-        text_to_process = "\n\n".join(intermediate_summaries)
-
-    system_prompt = (
-        "You are an elite educational AI assistant. Your goal is to convert lecture material into "
-        "well-organized, clear Markdown notes. Use bold text, bullet points, and clean formatting."
+    response = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[
+            {"role": "system", "content": "You are an elite academic AI assistant dedicated to high-precision educational note synthesis."},
+            {"role": "user", "content": f"{selected_prompt}\n\n--- TRANSCRIPT ---\n{processed_text}"}
+        ],
+        temperature=0.3,
+        max_tokens=2500
     )
+    return response.choices[0].message.content
 
-    user_prompt = f"""
-Lecture Context:
-\"\"\"
-{text_to_process}
-\"\"\"
 
-Task:
-{selected_prompt}
-"""
+def ask_video_question(transcript_text: str, question: str, api_key: str) -> str:
+    """Answers user questions strictly based on the provided video transcript."""
+    client = Groq(api_key=api_key)
+    processed_text = transcript_text[:25000]
 
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "system", "content": "You are an AI teaching assistant. Answer the student's question accurately using ONLY the video transcript provided. If the answer is not in the transcript, state that clearly."},
+            {"role": "user", "content": f"Transcript:\n{processed_text}\n\nQuestion: {question}"}
         ],
-        temperature=0.3,
-        max_tokens=1500
+        temperature=0.2,
+        max_tokens=800
     )
-
     return response.choices[0].message.content
+
+
+def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
+    """Generates Mermaid.js flowchart code representing lecture hierarchy."""
+    client = Groq(api_key=api_key)
+    processed_text = transcript_text[:15000]
+
+    response = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[
+            {"role": "system", "content": "You are an expert in visual knowledge graphs. Output ONLY valid Mermaid.js graph code starting with 'graph TD' representing the hierarchical structure of this lecture. Do not wrap in markdown quotes or backticks, just raw Mermaid syntax."},
+            {"role": "user", "content": f"Transcript:\n{processed_text}"}
+        ],
+        temperature=0.2,
+        max_tokens=600
+    )
+    raw_code = response.choices[0].message.content.strip()
+    return raw_code.replace("```mermaid", "").replace("```", "").strip()
