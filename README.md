@@ -3,7 +3,7 @@
 An end-to-end AI web application that extracts transcripts from educational YouTube videos and generates structured study notes, cheat sheets, revision quizzes, and downloadable PDFs using Llama 3.1 on Groq.
 
 ## 🚀 Live Demo
-- **Web App:** [Insert your Streamlit live link here]
+- **Web App:** [Open AI YouTube Summarizer](https://youtube-summarizer-5ewx3n6ahlujve6ikbzesd.streamlit.app/)
 
 ## 🛠️ Features
 - **Transcript Extraction:** Automated subtitle extraction with timestamps via `youtube-transcript-api`.
