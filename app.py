@@ -31,37 +31,16 @@ def resolve_api_key() -> str:
 active_api_key = resolve_api_key()
 
 # Session State Initialization
-if "theme_mode" not in st.session_state:
-    st.session_state["theme_mode"] = "Dark"
 if "qa_history" not in st.session_state:
     st.session_state["qa_history"] = []
 
-# Top Bar Header & Theme Switcher
-col_title, col_toggle = st.columns([5, 1.5])
-with col_toggle:
-    theme_selection = st.radio(
-        "Theme Toggle",
-        options=["🌙 Dark", "☀️ Light"],
-        index=0 if st.session_state["theme_mode"] == "Dark" else 1,
-        horizontal=True,
-        label_visibility="collapsed"
-    )
-    chosen_mode = "Dark" if "Dark" in theme_selection else "Light"
-    if chosen_mode != st.session_state["theme_mode"]:
-        st.session_state["theme_mode"] = chosen_mode
-        st.rerun()
-
-is_dark = st.session_state["theme_mode"] == "Dark"
-
-# ==========================================
-# 1. DEDICATED DARK MODE STYLESHEET
-# ==========================================
-DARK_CSS = """
+# Permanent Dark Theme CSS
+st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
     * { font-family: 'Plus Jakarta Sans', sans-serif; }
 
-    /* App & Sidebar Base */
+    /* App Base & Layout */
     .stApp {
         background-color: #0B0F19 !important;
         color: #F8FAFC !important;
@@ -77,7 +56,7 @@ DARK_CSS = """
         color: #F8FAFC !important;
         fill: #F8FAFC !important;
     }
-    
+
     /* Typography */
     h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown {
         color: #F8FAFC !important;
@@ -86,23 +65,31 @@ DARK_CSS = """
     /* Hero Banner */
     .hero-container {
         background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.12) 100%) !important;
-        border: 1px solid rgba(255, 255, 255, 0.14) !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
         border-radius: 16px;
         padding: 2.2rem 2rem;
         text-align: center;
         margin-bottom: 1.5rem;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
     }
     .badge {
-        background: rgba(99, 102, 241, 0.3) !important;
+        background: rgba(99, 102, 241, 0.25) !important;
         color: #A5B4FC !important;
-        border: 1px solid rgba(99, 102, 241, 0.5) !important;
+        border: 1px solid rgba(99, 102, 241, 0.4) !important;
+        padding: 0.35rem 0.85rem;
+        border-radius: 9999px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        display: inline-block;
+        margin-bottom: 0.6rem;
     }
 
     /* Metric Cards */
     .metric-card {
-        background: rgba(255, 255, 255, 0.05) !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        background: rgba(255, 255, 255, 0.04) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
         border-radius: 12px;
         padding: 1.2rem;
         text-align: center;
@@ -117,15 +104,13 @@ DARK_CSS = """
         font-size: 0.85rem;
     }
 
-    /* Text Inputs */
+    /* Form Inputs & Dropdowns */
     div[data-testid="stTextInput"] input {
         background-color: #1E293B !important;
         color: #FFFFFF !important;
         border: 1px solid rgba(255, 255, 255, 0.18) !important;
         border-radius: 8px;
     }
-
-    /* Select Dropdowns */
     div[data-baseweb="select"] > div {
         background-color: #1E293B !important;
         color: #FFFFFF !important;
@@ -142,7 +127,7 @@ DARK_CSS = """
         color: #FFFFFF !important;
     }
 
-    /* Secondary / Sample Buttons */
+    /* Buttons */
     button[kind="secondary"] {
         background-color: #1E293B !important;
         color: #F8FAFC !important;
@@ -154,8 +139,6 @@ DARK_CSS = """
         border-color: #818CF8 !important;
         color: #FFFFFF !important;
     }
-
-    /* Primary Action Buttons */
     button[kind="primary"] {
         background: linear-gradient(90deg, #6366F1, #4F46E5) !important;
         color: #FFFFFF !important;
@@ -166,150 +149,6 @@ DARK_CSS = """
     button[kind="primary"]:hover {
         background: linear-gradient(90deg, #4F46E5, #4338CA) !important;
         transform: translateY(-1px);
-    }
-</style>
-"""
-
-# ==========================================
-# 2. DEDICATED LIGHT MODE STYLESHEET
-# ==========================================
-LIGHT_CSS = """
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
-    * { font-family: 'Plus Jakarta Sans', sans-serif; }
-
-    /* App & Sidebar Base */
-    .stApp {
-        background-color: #F8FAFC !important;
-        color: #0F172A !important;
-    }
-    section[data-testid="stSidebar"] {
-        background-color: #FFFFFF !important;
-        border-right: 1px solid #E2E8F0 !important;
-    }
-    header[data-testid="stHeader"] {
-        background-color: transparent !important;
-    }
-    header[data-testid="stHeader"] * {
-        color: #0F172A !important;
-        fill: #0F172A !important;
-    }
-    div[data-testid="stToolbar"] * {
-        color: #0F172A !important;
-        fill: #0F172A !important;
-    }
-
-    /* Typography */
-    h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown {
-        color: #0F172A !important;
-    }
-
-    /* Hero Banner */
-    .hero-container {
-        background: linear-gradient(135deg, #EEF2FF 0%, #FAF5FF 100%) !important;
-        border: 1px solid #C7D2FE !important;
-        border-radius: 16px;
-        padding: 2.2rem 2rem;
-        text-align: center;
-        margin-bottom: 1.5rem;
-        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.08);
-    }
-    .hero-container h1 { color: #1E1B4B !important; }
-    .hero-container p { color: #475569 !important; }
-    .badge {
-        background: #E0E7FF !important;
-        color: #4338CA !important;
-        border: 1px solid #C7D2FE !important;
-    }
-
-    /* Metric Cards */
-    .metric-card {
-        background: #FFFFFF !important;
-        border: 1px solid #E2E8F0 !important;
-        border-radius: 12px;
-        padding: 1.2rem;
-        text-align: center;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
-    }
-    .metric-value {
-        color: #4F46E5 !important;
-        font-size: 1.7rem;
-        font-weight: 800;
-    }
-    .metric-label {
-        color: #64748B !important;
-        font-size: 0.85rem;
-    }
-
-    /* Text Inputs */
-    div[data-testid="stTextInput"] input {
-        background-color: #FFFFFF !important;
-        color: #0F172A !important;
-        border: 1px solid #CBD5E1 !important;
-        border-radius: 8px;
-    }
-
-    /* Select Dropdowns */
-    div[data-baseweb="select"] > div {
-        background-color: #FFFFFF !important;
-        color: #0F172A !important;
-        border: 1px solid #CBD5E1 !important;
-    }
-    div[data-baseweb="select"] * {
-        color: #0F172A !important;
-        fill: #0F172A !important;
-    }
-    ul[data-baseweb="menu"] {
-        background-color: #FFFFFF !important;
-    }
-    ul[data-baseweb="menu"] li {
-        color: #0F172A !important;
-    }
-
-    /* Secondary / Sample Buttons */
-    button[kind="secondary"] {
-        background-color: #FFFFFF !important;
-        color: #1E293B !important;
-        border: 1px solid #CBD5E1 !important;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
-        border-radius: 8px;
-    }
-    button[kind="secondary"]:hover {
-        background-color: #F1F5F9 !important;
-        border-color: #6366F1 !important;
-        color: #4F46E5 !important;
-    }
-
-    /* Primary Action Buttons */
-    button[kind="primary"] {
-        background: linear-gradient(90deg, #4F46E5, #4338CA) !important;
-        color: #FFFFFF !important;
-        border: none !important;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25) !important;
-    }
-    button[kind="primary"]:hover {
-        background: linear-gradient(90deg, #4338CA, #3730A3) !important;
-        transform: translateY(-1px);
-    }
-</style>
-"""
-
-# Inject Selected Theme CSS
-st.markdown(DARK_CSS if is_dark else LIGHT_CSS, unsafe_allow_html=True)
-
-# Shared Core Styles
-st.markdown("""
-<style>
-    .badge {
-        padding: 0.35rem 0.85rem;
-        border-radius: 9999px;
-        font-size: 0.78rem;
-        font-weight: 700;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-        display: inline-block;
-        margin-bottom: 0.6rem;
     }
     .stButton>button {
         font-weight: 600;
@@ -345,7 +184,7 @@ st.markdown("""
 <div class="hero-container">
     <div class="badge">⚡ Groq LPU Accelerated</div>
     <h1 style="margin: 0.2rem 0; font-weight: 800; font-size: 2.3rem;">AI YouTube Lecture Digest</h1>
-    <p style="margin: 0; font-size: 0.95rem;">Convert video lectures into structured notes, mind maps, quizzes, and searchable subtitles.</p>
+    <p style="margin: 0; font-size: 0.95rem; opacity: 0.85;">Convert video lectures into structured notes, mind maps, quizzes, and searchable subtitles.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -494,7 +333,7 @@ if 'summary' in st.session_state:
                 </div>
                 <script type="module">
                     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-                    mermaid.initialize({{ startOnLoad: true, theme: '{"dark" if is_dark else "default"}' }});
+                    mermaid.initialize({{ startOnLoad: true, theme: 'dark' }});
                 </script>
                 """
                 components.html(mermaid_html, height=450, scrolling=True)
