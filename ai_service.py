@@ -3,14 +3,12 @@ from groq import Groq
 # Active production Groq model identifiers
 MODEL_CANDIDATES = [
     "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-    "llama-3.2-3b-preview",
-    "llama-3.2-1b-preview"
+    "llama-3.1-8b-instant"
 ]
 
 def call_groq_completion(client: Groq, messages: list, max_tokens: int = 1500, temperature: float = 0.3) -> str:
-    """Cascades through active production Groq models until a successful response is returned."""
-    last_err = None
+    """Tries active production Groq models sequentially."""
+    errors = []
     for model_name in MODEL_CANDIDATES:
         try:
             response = client.chat.completions.create(
@@ -21,9 +19,10 @@ def call_groq_completion(client: Groq, messages: list, max_tokens: int = 1500, t
             )
             return response.choices[0].message.content
         except Exception as e:
-            last_err = e
+            errors.append(f"{model_name}: {str(e)}")
             continue
-    raise Exception(f"Groq API call failed across all active models: {str(last_err)}")
+            
+    raise Exception("Groq API error across models:\n" + "\n".join(errors))
 
 def chunk_text(text: str, max_chars: int = 14000) -> list[str]:
     """Splits transcript text into bounded chunks to stay within TPM rate limits."""
@@ -78,7 +77,7 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
         "Actionable Bullet Points": (
             f"Extract critical points, step-by-step instructions, and key facts.\n"
             f"{lang_instruction}\n"
-            f"Detail Level: {detail_level}\n"
+            f"Detail Level: {detail_level}\n\n"
             "Use clear hierarchical bullet points with bold keywords."
         ),
         "Practice Quiz & Flashcards": (
@@ -97,7 +96,7 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
 
     selected_prompt = prompts.get(mode, prompts["Detailed Study Notes"])
 
-    # Single-pass execution for standard lengths
+    # Single-pass execution for standard length
     if len(chunks) == 1:
         messages = [
             {"role": "system", "content": "You are an elite academic AI assistant dedicated to high-precision study synthesis."},
