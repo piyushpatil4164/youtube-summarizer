@@ -1,5 +1,6 @@
 import re
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
+import youtube_transcript_api
+from youtube_transcript_api import YouTubeTranscriptApi
 
 def extract_video_id(url: str) -> str | None:
     """Extracts standard 11-character YouTube video ID from various URL formats."""
@@ -23,33 +24,65 @@ def format_timestamp(seconds: float) -> str:
 
 def get_transcript(video_id: str):
     """
-    Fetches the subtitle transcript from YouTube.
-    Returns full raw string and timestamped segments list.
+    Safely retrieves subtitles/transcripts using multiple fallback strategies.
+    Returns: raw_text (str), segments (list)
     """
-    try:
-        # Fetch transcript using the official class method
-        transcript_data = YouTubeTranscriptApi.get_transcript(video_id)
-        
-        full_text_list = []
-        segments = []
-        
-        for item in transcript_data:
-            text = item.get('text', '').strip()
-            start_time = item.get('start', 0.0)
-            
-            if text:
-                full_text_list.append(text)
-                segments.append({
-                    "timestamp": format_timestamp(start_time),
-                    "text": text
-                })
-        
-        raw_text = " ".join(full_text_list)
-        return raw_text, segments
+    transcript_data = None
 
-    except TranscriptsDisabled:
-        raise Exception("Transcripts are disabled for this video by the creator.")
-    except NoTranscriptFound:
-        raise Exception("No English or auto-generated transcript found for this video.")
-    except Exception as e:
-        raise Exception(f"Could not retrieve transcript: {str(e)}")
+    # Strategy 1: Direct Class Call
+    try:
+        if hasattr(YouTubeTranscriptApi, 'get_transcript'):
+            transcript_data = YouTubeTranscriptApi.get_transcript(video_id)
+    except Exception:
+        transcript_data = None
+
+    # Strategy 2: Instance Call
+    if not transcript_data:
+        try:
+            api_instance = YouTubeTranscriptApi()
+            if hasattr(api_instance, 'get_transcript'):
+                transcript_data = api_instance.get_transcript(video_id)
+        except Exception:
+            transcript_data = None
+
+    # Strategy 3: Transcript List Finder (Supports Auto-Generated and Multilingual)
+    if not transcript_data:
+        try:
+            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            # Try manually created transcript first, fallback to generated
+            try:
+                transcript_obj = transcript_list.find_manually_created_transcript(['en', 'hi', 'es', 'fr', 'de'])
+            except Exception:
+                transcript_obj = transcript_list.find_generated_transcript(['en', 'hi', 'es', 'fr', 'de'])
+            
+            transcript_data = transcript_obj.fetch()
+        except Exception:
+            # Last attempt: grab the first available transcript in any language
+            try:
+                transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+                for t in transcript_list:
+                    transcript_data = t.fetch()
+                    break
+            except Exception as final_err:
+                raise Exception(f"Subtitles are unavailable or disabled for this video: {str(final_err)}")
+
+    if not transcript_data:
+        raise Exception("Could not fetch subtitles for this video. Please ensure the video has closed captions/subtitles enabled.")
+
+    # Process and build segments
+    full_text_list = []
+    segments = []
+
+    for item in transcript_data:
+        text = item.get('text', '').strip()
+        start_time = item.get('start', 0.0)
+
+        if text:
+            full_text_list.append(text)
+            segments.append({
+                "timestamp": format_timestamp(start_time),
+                "text": text
+            })
+
+    raw_text = " ".join(full_text_list)
+    return raw_text, segments
