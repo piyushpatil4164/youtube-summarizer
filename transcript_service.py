@@ -1,11 +1,9 @@
 import re
-import json
 import html
-import urllib.request
-import xml.etree.ElementTree as ET
+from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 
 def extract_video_id(url: str) -> str | None:
-    """Extracts standard 11-character YouTube video ID from any valid URL."""
+    """Extracts standard 11-character YouTube video ID from any valid YouTube URL."""
     if not url:
         return None
     url = url.strip()
@@ -32,86 +30,68 @@ def format_timestamp(seconds: float) -> str:
     secs = int(seconds % 60)
     return f"{minutes:02d}:{secs:02d}"
 
-def fetch_direct_captions(video_id: str):
-    """Directly scrapes YouTube player metadata for captions without library dependencies."""
-    watch_url = f"https://www.youtube.com/watch?v={video_id}"
-    req = urllib.request.Request(
-        watch_url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Accept-Language": "en-US,en;q=0.9"
-        }
-    )
-    
-    with urllib.request.urlopen(req, timeout=12) as response:
-        html_page = response.read().decode('utf-8', errors='ignore')
+def get_transcript(video_id: str):
+    """
+    Robust multi-strategy transcript retriever:
+    1. Look up transcript list and find manual or generated English tracks.
+    2. Fallback to any language track and auto-translate to English.
+    3. Direct fetch as last resort.
+    """
+    transcript_data = None
+    fetch_error = None
 
-    match = re.search(r'"captionTracks":\s*(\[.*?\])', html_page)
-    if not match:
-        raise Exception("No caption tracks metadata found in YouTube response.")
+    try:
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        
+        # Priority 1: Preferred English and common variants
+        try:
+            target_langs = ['en', 'en-US', 'en-GB', 'en-CA', 'en-IN', 'hi', 'es', 'fr', 'de']
+            t = transcript_list.find_transcript(target_langs)
+            transcript_data = t.fetch()
+        except Exception:
+            pass
 
-    tracks = json.loads(match.group(1))
-    if not tracks:
-        raise Exception("Caption tracks list is empty.")
+        # Priority 2: If foreign language only, translate to English
+        if not transcript_data:
+            try:
+                first_track = next(iter(transcript_list))
+                if first_track.is_translatable:
+                    transcript_data = first_track.translate('en').fetch()
+                else:
+                    transcript_data = first_track.fetch()
+            except Exception:
+                pass
 
-    # Select English or first available caption track
-    target_url = None
-    for track in tracks:
-        lang = track.get("languageCode", "").lower()
-        if lang.startswith("en"):
-            target_url = track.get("baseUrl")
-            break
-    if not target_url:
-        target_url = tracks[0].get("baseUrl")
+    except Exception as e:
+        fetch_error = e
 
-    # Fetch subtitle XML
-    cap_req = urllib.request.Request(
-        target_url,
-        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    )
-    with urllib.request.urlopen(cap_req, timeout=12) as cap_resp:
-        xml_data = cap_resp.read().decode('utf-8', errors='ignore')
+    # Priority 3: Direct API call
+    if not transcript_data:
+        try:
+            transcript_data = YouTubeTranscriptApi.get_transcript(video_id)
+        except Exception as e:
+            fetch_error = e
 
-    root = ET.fromstring(xml_data)
-    segments, full_text = [], []
+    if not transcript_data:
+        raise Exception(f"Closed captions or subtitles are unavailable for this video (ID: {video_id}). Please check that the video has CC enabled on YouTube.")
 
-    for elem in root.iter('text'):
-        val = elem.text
-        if val:
-            cleaned = html.unescape(val).replace('\n', ' ').strip()
-            start_sec = float(elem.get('start', 0.0))
-            if cleaned:
+    full_text_list = []
+    segments = []
+
+    for item in transcript_data:
+        raw_t = item.get('text', '')
+        if raw_t:
+            clean_t = html.unescape(raw_t).replace('\n', ' ').strip()
+            start_sec = float(item.get('start', 0.0))
+            if clean_t:
+                full_text_list.append(clean_t)
                 segments.append({
                     "timestamp": format_timestamp(start_sec),
-                    "text": cleaned
+                    "text": clean_t
                 })
-                full_text.append(cleaned)
 
-    if not full_text:
-        raise Exception("Subtitle track contained no readable lines.")
+    raw_text = " ".join(full_text_list)
+    if not raw_text.strip():
+        raise Exception("The extracted subtitle track contains no readable text.")
 
-    return " ".join(full_text), segments
-
-def get_transcript(video_id: str):
-    """Multi-tiered transcript retriever."""
-    # 1. Primary: Direct native fetcher
-    try:
-        return fetch_direct_captions(video_id)
-    except Exception:
-        pass
-
-    # 2. Fallback: Safe library import
-    try:
-        import sys
-        if 'youtube_transcript_api' in sys.modules:
-            yta = sys.modules['youtube_transcript_api']
-            api_cls = getattr(yta, 'YouTubeTranscriptApi', None)
-            if api_cls and hasattr(api_cls, 'get_transcript'):
-                data = api_cls.get_transcript(video_id)
-                full_text = [html.unescape(i.get('text', '')).strip() for i in data if i.get('text')]
-                segments = [{"timestamp": format_timestamp(i.get('start', 0.0)), "text": html.unescape(i.get('text', '')).strip()} for i in data if i.get('text')]
-                return " ".join(full_text), segments
-    except Exception:
-        pass
-
-    raise Exception(f"Closed captions or subtitles are unavailable for video ID: {video_id}. Please verify the video has English or auto-generated subtitles enabled.")
+    return raw_text, segments
