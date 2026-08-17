@@ -1,8 +1,7 @@
-import math
 from groq import Groq
 
-def chunk_text(text: str, max_chars: int = 12000) -> list[str]:
-    """Splits long text into manageable chunks to stay well below the 6000 TPM limit."""
+def chunk_text(text: str, max_chars: int = 15000) -> list[str]:
+    """Splits transcript into chunks to stay well below TPM limits."""
     words = text.split()
     chunks = []
     current_chunk = []
@@ -22,14 +21,14 @@ def chunk_text(text: str, max_chars: int = 12000) -> list[str]:
     return chunks if chunks else [text]
 
 
-def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "Standard", language: str = "English") -> str:
-    """Generates structured notes safely within Groq TPM limits using Map-Reduce for long transcripts."""
+def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "Standard") -> str:
+    """Generates structured notes strictly in English within token limits."""
     client = Groq(api_key=api_key)
-    chunks = chunk_text(text, max_chars=11000)
+    chunks = chunk_text(text, max_chars=14000)
     
     prompts = {
         "Detailed Study Notes": (
-            f"You are an expert university professor. Create comprehensive, exam-ready study notes in {language}.\n"
+            f"You are an expert professor. Create comprehensive, exam-ready study notes in English.\n"
             f"Detail Level: {detail_level}\n\n"
             "Structure strictly with these headers:\n"
             "## 📌 Core Concept & Overview\n"
@@ -39,37 +38,37 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
             "## ❓ Potential Exam Questions & Answers"
         ),
         "Executive Summary": (
-            f"Provide a structured executive briefing of this content in {language}.\n"
+            f"Provide a structured executive briefing of this lecture strictly in English.\n"
             f"Detail Level: {detail_level}\n\n"
             "- **Core Problem / Thesis**\n"
             "- **Key Innovations & Takeaways**\n"
             "- **Final Verdict & Implications**"
         ),
         "Actionable Bullet Points": (
-            f"Extract the most critical points, step-by-step instructions, and key facts in {language}.\n"
+            f"Extract critical points, step-by-step instructions, and key facts in English.\n"
             f"Detail Level: {detail_level}\n"
             "Use clear hierarchical bullet points with bold keywords."
         ),
         "Practice Quiz & Flashcards": (
-            f"Create a revision quiz and flashcard set in {language}.\n\n"
+            "Create an English revision quiz and flashcard set.\n\n"
             "### 🧠 Multiple Choice Questions (5 Questions)\n"
             "Provide 4 options per question with answers and explanations.\n\n"
             "### 🗂️ Flashcard Deck (5 Key Concepts)\n"
             "Format: **Front (Term/Question)** -> **Back (Definition/Answer)**"
         ),
         "Formula & Keyword Cheat Sheet": (
-            f"Extract all technical terms, definitions, and formulas into a structured reference guide in {language}."
+            "Extract all technical terms, definitions, and equations into an English reference cheat sheet."
         )
     }
 
     selected_prompt = prompts.get(mode, prompts["Detailed Study Notes"])
 
-    # If short video, process in single call
+    # Single call for standard videos
     if len(chunks) == 1:
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
-                {"role": "system", "content": "You are an elite academic AI assistant dedicated to high-precision study synthesis."},
+                {"role": "system", "content": "You are an elite academic AI assistant dedicated to high-precision study synthesis in English."},
                 {"role": "user", "content": f"{selected_prompt}\n\n--- TRANSCRIPT ---\n{chunks[0]}"}
             ],
             temperature=0.3,
@@ -77,13 +76,13 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
         )
         return response.choices[0].message.content
 
-    # If long lecture, summarize sections first then synthesize (Map-Reduce)
+    # Multi-part map-reduce for long lectures
     intermediate_summaries = []
-    for idx, c in enumerate(chunks[:3]):  # Cap at top sections to avoid rate throttling
+    for idx, c in enumerate(chunks[:3]):
         resp = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
-                {"role": "system", "content": "Summarize key academic concepts and facts from this lecture part concisely."},
+                {"role": "system", "content": "Summarize key academic concepts from this lecture part concisely in English."},
                 {"role": "user", "content": f"Part {idx+1} transcript:\n{c}"}
             ],
             temperature=0.3,
@@ -93,11 +92,10 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
 
     combined_intermediate = "\n\n".join(intermediate_summaries)
 
-    # Final synthesis
     final_response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=[
-            {"role": "system", "content": "You synthesize multi-part lecture notes into a final unified study guide."},
+            {"role": "system", "content": "Synthesize multi-part notes into a final unified study guide in English."},
             {"role": "user", "content": f"{selected_prompt}\n\n--- COMBINED SUMMARY POINTS ---\n{combined_intermediate}"}
         ],
         temperature=0.3,
@@ -107,14 +105,14 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
 
 
 def ask_video_question(transcript_text: str, question: str, api_key: str) -> str:
-    """Answers user questions safely within TPM context limits."""
+    """Answers user questions strictly in English based on the transcript."""
     client = Groq(api_key=api_key)
-    safe_transcript = transcript_text[:11000]
+    safe_transcript = transcript_text[:12000]
 
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=[
-            {"role": "system", "content": "Answer the question accurately using ONLY the lecture content provided. If not covered, state so."},
+            {"role": "system", "content": "Answer the question accurately in English using ONLY the lecture content provided."},
             {"role": "user", "content": f"Lecture Excerpt:\n{safe_transcript}\n\nQuestion: {question}"}
         ],
         temperature=0.2,
@@ -124,14 +122,14 @@ def ask_video_question(transcript_text: str, question: str, api_key: str) -> str
 
 
 def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
-    """Generates Mermaid.js flowchart syntax within token limits."""
+    """Generates Mermaid.js flowchart code."""
     client = Groq(api_key=api_key)
     safe_transcript = transcript_text[:8000]
 
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=[
-            {"role": "system", "content": "Output ONLY valid Mermaid.js graph code starting with 'graph TD'. No markdown code blocks, backticks, or extra explanation."},
+            {"role": "system", "content": "Output ONLY valid Mermaid.js graph code in English starting with 'graph TD'. No markdown code blocks, backticks, or extra explanation."},
             {"role": "user", "content": f"Lecture content:\n{safe_transcript}"}
         ],
         temperature=0.2,
