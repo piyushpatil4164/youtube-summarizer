@@ -1,16 +1,15 @@
 from groq import Groq
 
-# Model fallback list to ensure zero 404 errors across all Groq API tiers
+# Active production Groq model identifiers
 MODEL_CANDIDATES = [
-    "llama3-8b-8192",
     "llama-3.3-70b-versatile",
-    "llama3-70b-8192",
-    "mixtral-8x7b-32768",
-    "gemma2-9b-it"
+    "llama-3.1-8b-instant",
+    "llama-3.2-3b-preview",
+    "llama-3.2-1b-preview"
 ]
 
 def call_groq_completion(client: Groq, messages: list, max_tokens: int = 1500, temperature: float = 0.3) -> str:
-    """Tries active Groq models in sequence until a valid available model responds."""
+    """Cascades through active production Groq models until a successful response is returned."""
     last_err = None
     for model_name in MODEL_CANDIDATES:
         try:
@@ -24,10 +23,10 @@ def call_groq_completion(client: Groq, messages: list, max_tokens: int = 1500, t
         except Exception as e:
             last_err = e
             continue
-    raise Exception(f"Groq API call failed across all models: {str(last_err)}")
+    raise Exception(f"Groq API call failed across all active models: {str(last_err)}")
 
 def chunk_text(text: str, max_chars: int = 14000) -> list[str]:
-    """Splits transcript text into bounded chunks to stay within TPM limits."""
+    """Splits transcript text into bounded chunks to stay within TPM rate limits."""
     words = text.split()
     chunks = []
     current_chunk = []
@@ -47,13 +46,13 @@ def chunk_text(text: str, max_chars: int = 14000) -> list[str]:
     return chunks if chunks else [text]
 
 def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "Standard", language: str = "English") -> str:
-    """Generates structured notes in the chosen language."""
+    """Generates structured notes in the selected language."""
     client = Groq(api_key=api_key)
     chunks = chunk_text(text, max_chars=13000)
     
     lang_instruction = (
         f"Generate the entire response STRICTLY in {language}. "
-        "If Hinglish is selected, use conversational Hindi written in the Latin alphabet with technical terms in English."
+        "If Hinglish is selected, use natural conversational Hindi written in the Latin alphabet with technical terms in English."
     )
 
     prompts = {
@@ -98,7 +97,7 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
 
     selected_prompt = prompts.get(mode, prompts["Detailed Study Notes"])
 
-    # Single-pass execution for standard length
+    # Single-pass execution for standard lengths
     if len(chunks) == 1:
         messages = [
             {"role": "system", "content": "You are an elite academic AI assistant dedicated to high-precision study synthesis."},
@@ -106,7 +105,7 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
         ]
         return call_groq_completion(client, messages, max_tokens=1500, temperature=0.3)
 
-    # Multi-pass execution for long transcripts
+    # Multi-pass Map-Reduce execution for long lectures
     intermediate_summaries = []
     for idx, c in enumerate(chunks[:3]):
         messages = [
@@ -124,7 +123,7 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
     return call_groq_completion(client, final_messages, max_tokens=1800, temperature=0.3)
 
 def ask_video_question(transcript_text: str, question: str, api_key: str, language: str = "English") -> str:
-    """Answers user doubts based on lecture content."""
+    """Answers specific student questions using only lecture context."""
     client = Groq(api_key=api_key)
     safe_transcript = transcript_text[:12000]
 
@@ -135,12 +134,12 @@ def ask_video_question(transcript_text: str, question: str, api_key: str, langua
     return call_groq_completion(client, messages, max_tokens=600, temperature=0.2)
 
 def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
-    """Generates Mermaid.js diagram flowchart code."""
+    """Generates Mermaid.js flowchart code."""
     client = Groq(api_key=api_key)
     safe_transcript = transcript_text[:8000]
 
     messages = [
-        {"role": "system", "content": "Output ONLY valid Mermaid.js graph code starting with 'graph TD'. No markdown code blocks, backticks, or extra explanation."},
+        {"role": "system", "content": "Output ONLY valid Mermaid.js graph code starting with 'graph TD'. No markdown code blocks, backticks, or extra commentary."},
         {"role": "user", "content": f"Lecture content:\n{safe_transcript}"}
     ]
     raw_code = call_groq_completion(client, messages, max_tokens=500, temperature=0.2)
