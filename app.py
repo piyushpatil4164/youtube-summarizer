@@ -81,6 +81,7 @@ DARK_CSS = """
     div[data-testid="stTextInput"] input, div[data-testid="stTextArea"] textarea {
         background-color: #1E293B !important; color: #FFFFFF !important; border: 1px solid rgba(255, 255, 255, 0.18) !important; border-radius: 8px;
     }
+    div[data-testid="stTextInput"] input:focus, div[data-testid="stTextArea"] textarea:focus { border-color: #818CF8 !important; box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.25) !important; }
     div[data-baseweb="select"] > div {
         background-color: #1E293B !important; color: #FFFFFF !important; border: 1px solid rgba(255, 255, 255, 0.18) !important; border-radius: 8px;
     }
@@ -127,6 +128,7 @@ LIGHT_CSS = """
     div[data-testid="stTextInput"] input, div[data-testid="stTextArea"] textarea {
         background-color: #FFFFFF !important; color: #0F172A !important; border: 1px solid #CBD5E1 !important; border-radius: 8px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03); transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
+    div[data-testid="stTextInput"] input:focus, div[data-testid="stTextArea"] textarea:focus { border-color: #4F46E5 !important; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15) !important; }
     div[data-baseweb="select"] > div {
         background-color: #FFFFFF !important; color: #0F172A !important; border: 1px solid #CBD5E1 !important; border-radius: 8px; transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
@@ -203,8 +205,8 @@ url_input = st.text_input(
     placeholder="https://www.youtube.com/watch?v=aircAruvnKk"
 )
 
-with st.expander("📋 Or Paste Transcript / Lecture Text Directly (Optional Backup)"):
-    direct_transcript_text = st.text_area("Paste raw transcript or lecture notes here:", height=150)
+with st.expander("📋 Direct Text / Transcript Input (Optional)"):
+    direct_transcript_text = st.text_area("Paste raw transcript or lecture notes here:", height=130)
 
 col_btn, _ = st.columns([1.5, 4])
 with col_btn:
@@ -212,7 +214,7 @@ with col_btn:
 
 if generate_clicked:
     target_url = st.session_state.get("url_input_box", "").strip()
-    direct_text = direct_transcript_text.strip() if 'direct_transcript_text' in locals() and direct_transcript_text else ""
+    direct_text = direct_transcript_text.strip() if direct_transcript_text else ""
     
     if not target_url and not direct_text:
         st.error("Please enter a YouTube URL or paste transcript text.")
@@ -221,7 +223,7 @@ if generate_clicked:
     else:
         raw_text = ""
         segments = []
-        video_id = extract_video_id(target_url) if target_url else "custom_text"
+        video_id = extract_video_id(target_url) if target_url else "direct_text"
         
         try:
             if direct_text:
@@ -359,7 +361,7 @@ if 'summary' in st.session_state:
 
     with right_col:
         st.subheader("📺 Video Player")
-        if st.session_state.get('video_id') and st.session_state['video_id'] != "custom_text":
+        if st.session_state.get('video_id') and st.session_state['video_id'] != "direct_text":
             st.video(f"https://www.youtube.com/watch?v={st.session_state['video_id']}")
         else:
             st.info("Direct text input mode active.")
