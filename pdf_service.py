@@ -1,77 +1,93 @@
-from fpdf import FPDF
 import re
+from fpdf import FPDF
 
-class SecurePDF(FPDF):
+class LecturePDF(FPDF):
     def header(self):
-        self.set_font('Helvetica', 'B', 12)
+        self.set_font('Helvetica', 'B', 11)
         self.set_text_color(99, 102, 241)
-        self.cell(0, 10, 'LectureDigest AI - Study Notes', border=False, align='L')
-        self.ln(12)
+        self.set_x(self.l_margin)
+        self.cell(self.epw, 8, 'LectureDigest AI - Study Notes', border=0, align='L')
+        self.ln(10)
 
     def footer(self):
-        self.set_y(-15)
+        self.set_y(-12)
         self.set_font('Helvetica', 'I', 8)
-        self.set_text_color(150, 150, 150)
-        self.cell(0, 10, f'Page {self.page_no()}', border=False, align='C')
+        self.set_text_color(140, 140, 140)
+        self.cell(self.epw, 8, f'Page {self.page_no()}', border=0, align='C')
 
-def sanitize_text_for_pdf(text: str) -> str:
-    """Encodes text to standard Latin-1 compatible characters to prevent PDF export errors."""
+def sanitize_pdf_text(text: str) -> str:
+    """Safely normalizes markdown and encodes text into standard PDF-compatible characters."""
     replacements = {
         '\u2018': "'", '\u2019': "'",
         '\u201c': '"', '\u201d': '"',
         '\u2013': '-', '\u2014': '-',
         '\u2026': '...', '\u2022': '*',
+        '•': '*', '–': '-', '—': '-',
+        '’': "'", '‘': "'", '“': '"', '”': '"'
     }
     for orig, rep in replacements.items():
         text = text.replace(orig, rep)
     
-    # Strip non-latin1 characters
-    return text.encode('latin-1', 'ignore').decode('latin-1')
+    # Strip markdown bold/italic asterisks for clean text rendering
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    text = re.sub(r'\*(.*?)\*', r'\1', text)
+    text = re.sub(r'`(.*?)`', r'\1', text)
+    
+    # Encode to latin-1 compatible characters
+    return text.encode('latin-1', 'replace').decode('latin-1')
 
 def create_pdf(markdown_text: str) -> bytes:
-    """Generates an in-memory PDF without storing files on disk or exposing server paths."""
-    pdf = SecurePDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    
-    # Clean PDF Metadata (Removes local creator/OS info)
-    pdf.set_title("Study Notes")
-    pdf.set_author("LectureDigest AI")
-    pdf.set_creator("LectureDigest AI Engine")
-    
-    pdf.add_page()
-    pdf.set_font("Helvetica", size=10)
-    pdf.set_text_color(40, 40, 40)
-
-    clean_content = sanitize_text_for_pdf(markdown_text)
-
-    for line in clean_content.split('\n'):
-        line_clean = line.strip()
-        if not line_clean:
-            pdf.ln(4)
-            continue
+    """Generates an in-memory PDF without crashing on long tokens, layout boundaries, or unicode."""
+    try:
+        pdf = LecturePDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.set_margins(15, 15, 15)
+        pdf.add_page()
         
-        # Headers
-        if line_clean.startswith('# '):
-            pdf.ln(3)
-            pdf.set_font("Helvetica", 'B', 14)
-            pdf.set_text_color(30, 41, 59)
-            pdf.multi_cell(0, 7, line_clean.replace('# ', ''))
-            pdf.set_font("Helvetica", size=10)
-            pdf.set_text_color(40, 40, 40)
-        elif line_clean.startswith('## '):
-            pdf.ln(2)
-            pdf.set_font("Helvetica", 'B', 12)
-            pdf.set_text_color(79, 70, 229)
-            pdf.multi_cell(0, 6, line_clean.replace('## ', ''))
-            pdf.set_font("Helvetica", size=10)
-            pdf.set_text_color(40, 40, 40)
-        elif line_clean.startswith('### '):
-            pdf.set_font("Helvetica", 'B', 10)
-            pdf.multi_cell(0, 5, line_clean.replace('### ', ''))
-            pdf.set_font("Helvetica", size=10)
-        else:
-            # Strip bold formatting markers for plain PDF rendering
-            stripped_line = re.sub(r'\*\*(.*?)\*\*', r'\1', line_clean)
-            pdf.multi_cell(0, 5, stripped_line)
+        pdf.set_title("LectureDigest Study Notes")
+        pdf.set_author("LectureDigest AI")
 
-    return bytes(pdf.output())
+        clean_text = sanitize_pdf_text(markdown_text)
+
+        for line in clean_text.split('\n'):
+            line_str = line.strip()
+            pdf.set_x(pdf.l_margin)
+            
+            if not line_str:
+                pdf.ln(3)
+                continue
+            
+            # Level 1 Heading
+            if line_str.startswith('# '):
+                pdf.ln(2)
+                pdf.set_font("Helvetica", 'B', 13)
+                pdf.set_text_color(30, 41, 59)
+                pdf.multi_cell(pdf.epw, 6, line_str.replace('# ', ''))
+                pdf.ln(1)
+            # Level 2 Heading
+            elif line_str.startswith('## '):
+                pdf.ln(2)
+                pdf.set_font("Helvetica", 'B', 11)
+                pdf.set_text_color(79, 70, 229)
+                pdf.multi_cell(pdf.epw, 5, line_str.replace('## ', ''))
+                pdf.ln(1)
+            # Level 3 Heading
+            elif line_str.startswith('### '):
+                pdf.set_font("Helvetica", 'B', 10)
+                pdf.set_text_color(51, 65, 85)
+                pdf.multi_cell(pdf.epw, 5, line_str.replace('### ', ''))
+            # Normal Text & Bullets
+            else:
+                pdf.set_font("Helvetica", size=9.5)
+                pdf.set_text_color(30, 30, 30)
+                pdf.multi_cell(pdf.epw, 4.5, line_str)
+
+        return bytes(pdf.output())
+
+    except Exception:
+        # Failsafe fallback: return simple raw PDF to avoid crashing Streamlit UI
+        fallback_pdf = FPDF()
+        fallback_pdf.add_page()
+        fallback_pdf.set_font("Helvetica", size=10)
+        fallback_pdf.multi_cell(fallback_pdf.epw, 5, sanitize_pdf_text(markdown_text))
+        return bytes(fallback_pdf.output())
