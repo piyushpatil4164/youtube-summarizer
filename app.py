@@ -35,8 +35,8 @@ if "theme_mode" not in st.session_state:
     st.session_state["theme_mode"] = "Dark"
 if "qa_history" not in st.session_state:
     st.session_state["qa_history"] = []
-if "current_url" not in st.session_state:
-    st.session_state["current_url"] = ""
+if "video_url_val" not in st.session_state:
+    st.session_state["video_url_val"] = ""
 
 # Top Bar Header & Theme Switcher
 col_title, col_toggle = st.columns([5, 1.5])
@@ -389,21 +389,21 @@ with col_lbl:
     st.markdown("**Sample Lectures:**")
 with c1:
     if st.button("🧠 Neural Networks", use_container_width=True, help="Load 3Blue1Brown Neural Networks Lecture"):
-        st.session_state["current_url"] = "https://www.youtube.com/watch?v=aircAruvnKk"
+        st.session_state["video_url_val"] = "https://www.youtube.com/watch?v=aircAruvnKk"
         st.rerun()
 with c2:
     if st.button("🐍 Python in 100s", use_container_width=True, help="Load Fireship Python Crash Course"):
-        st.session_state["current_url"] = "https://www.youtube.com/watch?v=dhgEAm8384U"
+        st.session_state["video_url_val"] = "https://www.youtube.com/watch?v=dhgEAm8384U"
         st.rerun()
 with c3:
     if st.button("🌐 Operating Systems", use_container_width=True, help="Load Operating Systems Fundamentals"):
-        st.session_state["current_url"] = "https://www.youtube.com/watch?v=26QPDBe-NB8"
+        st.session_state["video_url_val"] = "https://www.youtube.com/watch?v=26QPDBe-NB8"
         st.rerun()
 
 # Video Input
 url_input = st.text_input(
     "Enter YouTube Video URL:", 
-    value=st.session_state.get("current_url", ""), 
+    value=st.session_state.get("video_url_val", ""), 
     placeholder="https://www.youtube.com/watch?v=aircAruvnKk",
     help="Paste any standard YouTube video or Shorts link"
 )
