@@ -1,7 +1,7 @@
 from groq import Groq
 
 def chunk_text(text: str, max_chars: int = 14000) -> list[str]:
-    """Splits transcript into chunks to stay within TPM rate limits."""
+    """Splits transcript text into bounded chunks to stay within TPM rate limits."""
     words = text.split()
     chunks = []
     current_chunk = []
@@ -27,12 +27,12 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
     
     lang_instruction = (
         f"Generate the entire response STRICTLY in {language}. "
-        "If Hinglish is selected, use natural conversational Hindi written in Latin alphabet with clear English technical terms."
+        "If Hinglish is selected, use conversational Hindi written in the Latin alphabet with technical terms in English."
     )
 
     prompts = {
         "Detailed Study Notes": (
-            f"You are an expert professor. Create comprehensive, exam-ready study notes.\n"
+            f"You are an expert academic professor. Create comprehensive, exam-ready study notes.\n"
             f"{lang_instruction}\n"
             f"Detail Level: {detail_level}\n\n"
             "Structure strictly with these headers:\n"
@@ -110,7 +110,7 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
     return final_response.choices[0].message.content
 
 def ask_video_question(transcript_text: str, question: str, api_key: str, language: str = "English") -> str:
-    """Answers user questions based on the video transcript."""
+    """Answers specific user questions based on lecture context."""
     client = Groq(api_key=api_key)
     safe_transcript = transcript_text[:12000]
 
@@ -126,14 +126,14 @@ def ask_video_question(transcript_text: str, question: str, api_key: str, langua
     return response.choices[0].message.content
 
 def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
-    """Generates clean Mermaid.js flowchart code."""
+    """Generates Mermaid.js diagram graph structure."""
     client = Groq(api_key=api_key)
     safe_transcript = transcript_text[:8000]
 
     response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=[
-            {"role": "system", "content": "Output ONLY valid Mermaid.js graph code starting with 'graph TD'. No markdown code blocks, backticks, or extra explanation."},
+            {"role": "system", "content": "Output ONLY valid Mermaid.js graph code starting with 'graph TD'. No markdown code blocks, backticks, or extra commentary."},
             {"role": "user", "content": f"Lecture content:\n{safe_transcript}"}
         ],
         temperature=0.2,
