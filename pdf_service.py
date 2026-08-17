@@ -16,7 +16,7 @@ class LecturePDF(FPDF):
         self.cell(self.epw, 8, f'Page {self.page_no()}', border=0, align='C')
 
 def sanitize_pdf_text(text: str) -> str:
-    """Normalizes Markdown formatting and character sets for clean PDF rendering."""
+    """Sanitizes text for standard Latin-1 PDF output."""
     replacements = {
         '\u2018': "'", '\u2019': "'",
         '\u201c': '"', '\u201d': '"',
@@ -35,7 +35,7 @@ def sanitize_pdf_text(text: str) -> str:
     return text.encode('latin-1', 'replace').decode('latin-1')
 
 def create_pdf(markdown_text: str) -> bytes:
-    """Generates a downloadable PDF document."""
+    """Renders notes into a downloadable PDF."""
     try:
         pdf = LecturePDF()
         pdf.set_auto_page_break(auto=True, margin=15)
