@@ -1,6 +1,5 @@
 import re
 import youtube_transcript_api
-from youtube_transcript_api import YouTubeTranscriptApi
 
 def extract_video_id(url: str) -> str | None:
     """Extracts standard 11-character YouTube video ID from various URL formats."""
@@ -24,52 +23,40 @@ def format_timestamp(seconds: float) -> str:
 
 def get_transcript(video_id: str):
     """
-    Safely retrieves subtitles/transcripts using multiple fallback strategies.
-    Returns: raw_text (str), segments (list)
+    Retrieves English subtitles/transcripts safely across different versions of youtube_transcript_api.
     """
     transcript_data = None
+    api_target = getattr(youtube_transcript_api, 'YouTubeTranscriptApi', youtube_transcript_api)
 
-    # Strategy 1: Direct Class Call
-    try:
-        if hasattr(YouTubeTranscriptApi, 'get_transcript'):
-            transcript_data = YouTubeTranscriptApi.get_transcript(video_id)
-    except Exception:
-        transcript_data = None
-
-    # Strategy 2: Instance Call
-    if not transcript_data:
+    # Strategy 1: Direct get_transcript call
+    if hasattr(api_target, 'get_transcript'):
         try:
-            api_instance = YouTubeTranscriptApi()
-            if hasattr(api_instance, 'get_transcript'):
-                transcript_data = api_instance.get_transcript(video_id)
+            transcript_data = api_target.get_transcript(video_id, languages=['en', 'en-US', 'en-GB'])
+        except Exception:
+            try:
+                transcript_data = api_target.get_transcript(video_id)
+            except Exception:
+                transcript_data = None
+
+    # Strategy 2: list_transcripts fallback
+    if transcript_data is None and hasattr(api_target, 'list_transcripts'):
+        try:
+            t_list = api_target.list_transcripts(video_id)
+            try:
+                transcript_data = t_list.find_manually_created_transcript(['en']).fetch()
+            except Exception:
+                try:
+                    transcript_data = t_list.find_generated_transcript(['en']).fetch()
+                except Exception:
+                    for t in t_list:
+                        transcript_data = t.fetch()
+                        break
         except Exception:
             transcript_data = None
 
-    # Strategy 3: Transcript List Finder (Supports Auto-Generated and Multilingual)
     if not transcript_data:
-        try:
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-            # Try manually created transcript first, fallback to generated
-            try:
-                transcript_obj = transcript_list.find_manually_created_transcript(['en', 'hi', 'es', 'fr', 'de'])
-            except Exception:
-                transcript_obj = transcript_list.find_generated_transcript(['en', 'hi', 'es', 'fr', 'de'])
-            
-            transcript_data = transcript_obj.fetch()
-        except Exception:
-            # Last attempt: grab the first available transcript in any language
-            try:
-                transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-                for t in transcript_list:
-                    transcript_data = t.fetch()
-                    break
-            except Exception as final_err:
-                raise Exception(f"Subtitles are unavailable or disabled for this video: {str(final_err)}")
+        raise Exception("English subtitles or transcripts are not available for this video.")
 
-    if not transcript_data:
-        raise Exception("Could not fetch subtitles for this video. Please ensure the video has closed captions/subtitles enabled.")
-
-    # Process and build segments
     full_text_list = []
     segments = []
 
