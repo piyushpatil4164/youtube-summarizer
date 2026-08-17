@@ -44,7 +44,8 @@ with col_toggle:
         options=["🌙 Dark", "☀️ Light"],
         index=0 if st.session_state["theme_mode"] == "Dark" else 1,
         horizontal=True,
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        help="Switch between Dark and Light display modes"
     )
     chosen_mode = "Dark" if "Dark" in theme_selection else "Light"
     if chosen_mode != st.session_state["theme_mode"]:
@@ -56,18 +57,40 @@ is_dark = st.session_state["theme_mode"] == "Dark"
 # 1. Dark Mode CSS
 DARK_CSS = """
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
     * { font-family: 'Plus Jakarta Sans', sans-serif; }
 
-    .stApp { background-color: #0B0F19 !important; color: #F8FAFC !important; }
+    /* App & Sidebar Layout */
+    .stApp {
+        background-color: #0B0F19 !important;
+        color: #F8FAFC !important;
+    }
     section[data-testid="stSidebar"] {
         background-color: #111827 !important;
         border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
     }
-    header[data-testid="stHeader"] { background-color: transparent !important; }
-    header[data-testid="stHeader"] * { color: #F8FAFC !important; fill: #F8FAFC !important; }
-    h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown { color: #F8FAFC !important; }
 
+    /* Top-Right Header Icons & Streamlit Toolbar */
+    header[data-testid="stHeader"] {
+        background-color: transparent !important;
+    }
+    header[data-testid="stHeader"] button,
+    header[data-testid="stHeader"] a,
+    header[data-testid="stHeader"] svg,
+    div[data-testid="stToolbar"] svg,
+    div[data-testid="stToolbar"] button {
+        color: #F8FAFC !important;
+        fill: #F8FAFC !important;
+        stroke: #F8FAFC !important;
+        opacity: 0.95 !important;
+    }
+
+    /* Typography */
+    h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown {
+        color: #F8FAFC !important;
+    }
+
+    /* Hero Banner */
     .hero-container {
         background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.12) 100%) !important;
         border: 1px solid rgba(255, 255, 255, 0.14) !important;
@@ -82,142 +105,257 @@ DARK_CSS = """
         color: #A5B4FC !important;
         border: 1px solid rgba(99, 102, 241, 0.5) !important;
     }
+
+    /* Metric Cards */
     .metric-card {
         background: rgba(255, 255, 255, 0.05) !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
         border-radius: 12px;
         padding: 1.2rem;
         text-align: center;
+        transition: transform 0.2s ease, border-color 0.2s ease;
     }
-    .metric-value { color: #818CF8 !important; font-size: 1.7rem; font-weight: 800; }
-    .metric-label { color: #94A3B8 !important; font-size: 0.85rem; }
+    .metric-card:hover {
+        transform: translateY(-2px);
+        border-color: #818CF8 !important;
+    }
+    .metric-value {
+        color: #818CF8 !important;
+        font-size: 1.7rem;
+        font-weight: 800;
+    }
+    .metric-label {
+        color: #94A3B8 !important;
+        font-size: 0.85rem;
+    }
 
+    /* Form Controls */
     div[data-testid="stTextInput"] input {
         background-color: #1E293B !important;
         color: #FFFFFF !important;
         border: 1px solid rgba(255, 255, 255, 0.18) !important;
         border-radius: 8px;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
+    div[data-testid="stTextInput"] input:focus {
+        border-color: #818CF8 !important;
+        box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.25) !important;
+    }
+
     div[data-baseweb="select"] > div {
         background-color: #1E293B !important;
         color: #FFFFFF !important;
         border: 1px solid rgba(255, 255, 255, 0.18) !important;
+        border-radius: 8px;
     }
-    div[data-baseweb="select"] * { color: #FFFFFF !important; fill: #FFFFFF !important; }
-    ul[data-baseweb="menu"] { background-color: #1E293B !important; }
-    ul[data-baseweb="menu"] li { color: #FFFFFF !important; }
+    div[data-baseweb="select"] * {
+        color: #FFFFFF !important;
+        fill: #FFFFFF !important;
+    }
+    ul[data-baseweb="menu"] {
+        background-color: #1E293B !important;
+    }
+    ul[data-baseweb="menu"] li:hover {
+        background-color: #334155 !important;
+    }
 
+    /* Interactive Buttons & Hover States */
     button[kind="secondary"] {
         background-color: #1E293B !important;
         color: #F8FAFC !important;
         border: 1px solid rgba(255, 255, 255, 0.12) !important;
         border-radius: 8px;
+        transition: all 0.2s ease-in-out !important;
     }
     button[kind="secondary"]:hover {
         background-color: #334155 !important;
         border-color: #818CF8 !important;
         color: #FFFFFF !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
     }
+
     button[kind="primary"] {
         background: linear-gradient(90deg, #6366F1, #4F46E5) !important;
         color: #FFFFFF !important;
         border: none !important;
         border-radius: 8px;
         box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4) !important;
+        transition: all 0.2s ease-in-out !important;
     }
     button[kind="primary"]:hover {
         background: linear-gradient(90deg, #4F46E5, #4338CA) !important;
-        transform: translateY(-1px);
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6) !important;
     }
 </style>
 """
 
-# 2. Light Mode CSS
+# 2. Refined High-Contrast Light Mode CSS
 LIGHT_CSS = """
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
     * { font-family: 'Plus Jakarta Sans', sans-serif; }
 
-    .stApp { background-color: #F8FAFC !important; color: #0F172A !important; }
+    /* App & Sidebar Layout */
+    .stApp {
+        background-color: #F8FAFC !important;
+        color: #0F172A !important;
+    }
     section[data-testid="stSidebar"] {
         background-color: #FFFFFF !important;
         border-right: 1px solid #E2E8F0 !important;
+        box-shadow: 2px 0 10px rgba(0, 0, 0, 0.02) !important;
     }
-    header[data-testid="stHeader"] { background-color: transparent !important; }
-    header[data-testid="stHeader"] * { color: #0F172A !important; fill: #0F172A !important; }
-    div[data-testid="stToolbar"] * { color: #0F172A !important; fill: #0F172A !important; }
-    h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown { color: #0F172A !important; }
 
+    /* Fixed Streamlit Top-Right Icons (Share, Star, Menu, GitHub) */
+    header[data-testid="stHeader"] {
+        background-color: transparent !important;
+    }
+    header[data-testid="stHeader"] button,
+    header[data-testid="stHeader"] a,
+    header[data-testid="stHeader"] svg,
+    div[data-testid="stToolbar"] svg,
+    div[data-testid="stToolbar"] button {
+        color: #0F172A !important;
+        fill: #0F172A !important;
+        stroke: #0F172A !important;
+        opacity: 0.95 !important;
+    }
+    header[data-testid="stHeader"] button:hover svg,
+    header[data-testid="stHeader"] a:hover svg {
+        fill: #4F46E5 !important;
+        stroke: #4F46E5 !important;
+    }
+
+    /* Typography */
+    h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown {
+        color: #0F172A !important;
+    }
+
+    /* Hero Banner */
     .hero-container {
-        background: linear-gradient(135deg, #EEF2FF 0%, #FAF5FF 100%) !important;
+        background: linear-gradient(135deg, #FFFFFF 0%, #EEF2FF 100%) !important;
         border: 1px solid #C7D2FE !important;
         border-radius: 16px;
         padding: 2.2rem 2rem;
         text-align: center;
         margin-bottom: 1.5rem;
-        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.08);
+        box-shadow: 0 4px 20px rgba(99, 102, 241, 0.08);
     }
     .hero-container h1 { color: #1E1B4B !important; }
     .hero-container p { color: #475569 !important; }
     .badge {
-        background: #E0E7FF !important;
-        color: #4338CA !important;
+        background: #EEF2FF !important;
+        color: #4F46E5 !important;
         border: 1px solid #C7D2FE !important;
     }
+
+    /* Metric Cards */
     .metric-card {
         background: #FFFFFF !important;
         border: 1px solid #E2E8F0 !important;
         border-radius: 12px;
         padding: 1.2rem;
         text-align: center;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+        transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
     }
-    .metric-value { color: #4F46E5 !important; font-size: 1.7rem; font-weight: 800; }
-    .metric-label { color: #64748B !important; font-size: 0.85rem; }
+    .metric-card:hover {
+        transform: translateY(-2px);
+        border-color: #6366F1 !important;
+        box-shadow: 0 6px 16px rgba(99, 102, 241, 0.1);
+    }
+    .metric-value {
+        color: #4F46E5 !important;
+        font-size: 1.7rem;
+        font-weight: 800;
+    }
+    .metric-label {
+        color: #64748B !important;
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
 
+    /* Form Controls */
     div[data-testid="stTextInput"] input {
         background-color: #FFFFFF !important;
         color: #0F172A !important;
         border: 1px solid #CBD5E1 !important;
         border-radius: 8px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
+    div[data-testid="stTextInput"] input:focus {
+        border-color: #4F46E5 !important;
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15) !important;
+    }
+
     div[data-baseweb="select"] > div {
         background-color: #FFFFFF !important;
         color: #0F172A !important;
         border: 1px solid #CBD5E1 !important;
+        border-radius: 8px;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
-    div[data-baseweb="select"] * { color: #0F172A !important; fill: #0F172A !important; }
-    ul[data-baseweb="menu"] { background-color: #FFFFFF !important; }
-    ul[data-baseweb="menu"] li { color: #0F172A !important; }
+    div[data-baseweb="select"] > div:hover {
+        border-color: #6366F1 !important;
+    }
+    div[data-baseweb="select"] * {
+        color: #0F172A !important;
+        fill: #0F172A !important;
+    }
+    ul[data-baseweb="menu"] {
+        background-color: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08) !important;
+    }
+    ul[data-baseweb="menu"] li {
+        color: #0F172A !important;
+        transition: background-color 0.15s ease;
+    }
+    ul[data-baseweb="menu"] li:hover {
+        background-color: #EEF2FF !important;
+        color: #4F46E5 !important;
+    }
 
+    /* Buttons & Clear Hover States */
     button[kind="secondary"] {
         background-color: #FFFFFF !important;
         color: #1E293B !important;
         border: 1px solid #CBD5E1 !important;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
         border-radius: 8px;
+        transition: all 0.2s ease-in-out !important;
     }
     button[kind="secondary"]:hover {
-        background-color: #F1F5F9 !important;
+        background-color: #EEF2FF !important;
         border-color: #6366F1 !important;
         color: #4F46E5 !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.12) !important;
     }
+
     button[kind="primary"] {
         background: linear-gradient(90deg, #4F46E5, #4338CA) !important;
         color: #FFFFFF !important;
         border: none !important;
         border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25) !important;
+        box-shadow: 0 4px 14px rgba(79, 70, 229, 0.3) !important;
+        transition: all 0.2s ease-in-out !important;
     }
     button[kind="primary"]:hover {
         background: linear-gradient(90deg, #4338CA, #3730A3) !important;
-        transform: translateY(-1px);
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 20px rgba(79, 70, 229, 0.45) !important;
     }
 </style>
 """
 
+# Inject Selected Theme CSS
 st.markdown(DARK_CSS if is_dark else LIGHT_CSS, unsafe_allow_html=True)
 
+# Shared Core Styles
 st.markdown("""
 <style>
     .badge {
@@ -232,12 +370,11 @@ st.markdown("""
     }
     .stButton>button {
         font-weight: 600;
-        transition: all 0.2s ease-in-out;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Sidebar Configuration (English by default, no unnecessary language dropdown)
+# Sidebar Configuration
 with st.sidebar:
     st.markdown("### 🛠️ Study Controls")
     summary_mode = st.selectbox(
@@ -248,9 +385,14 @@ with st.sidebar:
             "Actionable Bullet Points",
             "Practice Quiz & Flashcards",
             "Formula & Keyword Cheat Sheet"
-        ]
+        ],
+        help="Select the AI synthesis format for your lecture notes"
     )
-    detail_level = st.selectbox("Depth:", ["Standard", "Concise", "In-Depth"])
+    detail_level = st.selectbox(
+        "Depth:", 
+        ["Standard", "Concise", "In-Depth"],
+        help="Choose the granularity and level of explanation"
+    )
 
     st.markdown("---")
     st.caption("🔒 System secured via Cloud Secret Management.")
@@ -269,22 +411,32 @@ col_lbl, c1, c2, c3 = st.columns([1.5, 2, 2, 2])
 with col_lbl:
     st.markdown("**Sample Lectures:**")
 with c1:
-    if st.button("🧠 Neural Networks", use_container_width=True):
+    if st.button("🧠 Neural Networks", use_container_width=True, help="Load 3Blue1Brown Neural Networks Lecture"):
         st.session_state['url_input_val'] = "https://www.youtube.com/watch?v=aircAruvnKk"
 with c2:
-    if st.button("🐍 Python in 100s", use_container_width=True):
+    if st.button("🐍 Python in 100s", use_container_width=True, help="Load Fireship Python Crash Course"):
         st.session_state['url_input_val'] = "https://www.youtube.com/watch?v=dhgEAm8384U"
 with c3:
-    if st.button("🌐 Operating Systems", use_container_width=True):
+    if st.button("🌐 Operating Systems", use_container_width=True, help="Load Operating Systems Fundamentals"):
         st.session_state['url_input_val'] = "https://www.youtube.com/watch?v=26QPDBe-NB8"
 
 # Video Input
 input_val = st.session_state.get('url_input_val', '')
-url_input = st.text_input("Enter YouTube Video URL:", value=input_val, placeholder="https://www.youtube.com/watch?v=aircAruvnKk")
+url_input = st.text_input(
+    "Enter YouTube Video URL:", 
+    value=input_val, 
+    placeholder="https://www.youtube.com/watch?v=aircAruvnKk",
+    help="Paste any standard YouTube video or Shorts link"
+)
 
 col_btn, _ = st.columns([1.5, 4])
 with col_btn:
-    generate_clicked = st.button("🚀 Process & Generate", type="primary", use_container_width=True)
+    generate_clicked = st.button(
+        "🚀 Process & Generate", 
+        type="primary", 
+        use_container_width=True,
+        help="Extract video transcript and generate AI study materials"
+    )
 
 # Processing Logic
 if generate_clicked:
@@ -370,7 +522,8 @@ if 'summary' in st.session_state:
                     data=st.session_state['summary'],
                     file_name="study_notes.md",
                     mime="text/markdown",
-                    use_container_width=True
+                    use_container_width=True,
+                    help="Save notes locally as a standard Markdown file"
                 )
             with d2:
                 try:
@@ -380,7 +533,8 @@ if 'summary' in st.session_state:
                         data=pdf_bytes,
                         file_name="study_notes.pdf",
                         mime="application/pdf",
-                        use_container_width=True
+                        use_container_width=True,
+                        help="Export notes as a clean printable PDF document"
                     )
                 except Exception:
                     st.caption("PDF generation preview unavailable for this formatting.")
@@ -388,7 +542,7 @@ if 'summary' in st.session_state:
         with tab_chat:
             st.subheader("💬 Ask Doubts from this Lecture")
             user_q = st.text_input("Ask a question:", placeholder="e.g., Explain the algorithm mentioned in the beginning", key="chat_input_field")
-            if st.button("Ask AI Assistant"):
+            if st.button("Ask AI Assistant", help="Submit question to query lecture contents"):
                 if user_q.strip():
                     with st.spinner("Searching video content..."):
                         ans = ask_video_question(st.session_state['raw_text'], user_q, active_api_key)
@@ -400,7 +554,7 @@ if 'summary' in st.session_state:
 
         with tab_mindmap:
             st.subheader("🗺️ Hierarchical Mind Map")
-            if st.button("Generate Visual Map"):
+            if st.button("Generate Visual Map", help="Build interactive Mermaid flowchart"):
                 with st.spinner("Generating flowchart structure..."):
                     mm_code = generate_mindmap_code(st.session_state['raw_text'], active_api_key)
                     st.session_state['mindmap'] = mm_code
@@ -419,7 +573,7 @@ if 'summary' in st.session_state:
 
         with tab_transcript:
             st.subheader("📜 Searchable Subtitles")
-            search_term = st.text_input("🔍 Filter keywords:", placeholder="e.g., gradient descent")
+            search_term = st.text_input("🔍 Filter keywords:", placeholder="e.g., gradient descent", help="Filter timestamped subtitles")
             filtered = [
                 s for s in st.session_state['segments'] 
                 if not search_term or search_term.lower() in s['text'].lower()
