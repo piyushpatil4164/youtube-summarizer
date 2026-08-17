@@ -45,7 +45,8 @@ with col_toggle:
         options=["🌙 Dark", "☀️ Light"],
         index=0 if st.session_state["theme_mode"] == "Dark" else 1,
         horizontal=True,
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        help="Switch between Dark and Light display modes"
     )
     chosen_mode = "Dark" if "Dark" in theme_selection else "Light"
     if chosen_mode != st.session_state["theme_mode"]:
