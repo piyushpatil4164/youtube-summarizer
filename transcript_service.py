@@ -32,92 +32,60 @@ def format_timestamp(seconds: float) -> str:
     secs = int(seconds % 60)
     return f"{minutes:02d}:{secs:02d}"
 
-def fetch_innertube_captions(video_id: str):
+def fetch_direct_timedtext(video_id: str):
     """
-    Directly queries YouTube's Innertube Player API with Android & Web clients.
-    Bypasses cloud IP web blocking and consent walls.
+    Extracts captions directly from YouTube's watch page ytInitialPlayerResponse.
+    Bypasses cloud IP blocking without external library dependencies.
     """
-    player_url = "https://www.youtube.com/youtubei/v1/player"
-    
-    # Client 1: Android Client Context
-    payload_android = {
-        "context": {
-            "client": {
-                "clientName": "ANDROID",
-                "clientVersion": "19.09.37",
-                "hl": "en"
-            }
-        },
-        "videoId": video_id
-    }
-    
-    captions = []
-    try:
-        data = json.dumps(payload_android).encode('utf-8')
-        headers = {
-            "Content-Type": "application/json",
-            "User-Agent": "com.google.android.youtube/19.09.37 (Linux; U; Android 11)"
+    watch_url = f"https://www.youtube.com/watch?v={video_id}"
+    req = urllib.request.Request(
+        watch_url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9"
         }
-        req = urllib.request.Request(player_url, data=data, headers=headers)
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            resp_data = json.loads(resp.read().decode('utf-8'))
-            captions = resp_data.get("captions", {}).get("playerCaptionsTracklistRenderer", {}).get("captionTracks", [])
-    except Exception:
-        pass
+    )
+    
+    with urllib.request.urlopen(req, timeout=12) as response:
+        html_content = response.read().decode('utf-8', errors='ignore')
 
-    # Client 2: Fallback to WEB Client Context
-    if not captions:
-        try:
-            payload_web = {
-                "context": {
-                    "client": {
-                        "clientName": "WEB",
-                        "clientVersion": "2.20240101.00.00",
-                        "hl": "en"
-                    }
-                },
-                "videoId": video_id
-            }
-            data_web = json.dumps(payload_web).encode('utf-8')
-            headers_web = {
-                "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
-            req_web = urllib.request.Request(player_url, data=data_web, headers=headers_web)
-            with urllib.request.urlopen(req_web, timeout=10) as resp:
-                resp_data = json.loads(resp.read().decode('utf-8'))
-                captions = resp_data.get("captions", {}).get("playerCaptionsTracklistRenderer", {}).get("captionTracks", [])
-        except Exception:
-            pass
+    # Look for captionTracks JSON in player response
+    match = re.search(r'"captionTracks":\s*(\[.*?\])', html_content)
+    if not match:
+        raise Exception("No caption tracks metadata found in YouTube response.")
 
-    if not captions:
-        raise Exception("No subtitle tracks found for this video in YouTube API.")
+    caption_tracks = json.loads(match.group(1))
+    if not caption_tracks:
+        raise Exception("Caption tracks list is empty.")
 
-    # Select English track or fallback to first available
-    base_url = None
-    for track in captions:
-        lang = track.get("languageCode", "").lower()
-        if lang.startswith("en"):
-            base_url = track.get("baseUrl")
+    # Find English track or fallback to the first track
+    target_url = None
+    for track in caption_tracks:
+        if track.get("languageCode", "").startswith("en"):
+            target_url = track.get("baseUrl")
             break
-    if not base_url:
-        base_url = captions[0].get("baseUrl")
+    if not target_url:
+        target_url = caption_tracks[0].get("baseUrl")
 
-    # Fetch timed text XML
-    cap_req = urllib.request.Request(base_url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(cap_req, timeout=10) as cap_resp:
-        xml_content = cap_resp.read().decode('utf-8', errors='ignore')
+    # Fetch subtitle XML
+    cap_req = urllib.request.Request(
+        target_url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+    )
+    with urllib.request.urlopen(cap_req, timeout=12) as cap_resp:
+        xml_data = cap_resp.read().decode('utf-8', errors='ignore')
 
-    # Parse XML subtitle elements
-    root = ET.fromstring(xml_content)
+    root = ET.fromstring(xml_data)
     segments = []
     full_text = []
 
-    for text_elem in root.iter('text'):
-        raw_val = text_elem.text
-        if raw_val:
-            cleaned = html.unescape(raw_val).replace('\n', ' ').strip()
-            start_sec = float(text_elem.get('start', 0.0))
+    for elem in root.iter('text'):
+        val = elem.text
+        if val:
+            cleaned = html.unescape(val).replace('\n', ' ').strip()
+            start_sec = float(elem.get('start', 0.0))
             if cleaned:
                 full_text.append(cleaned)
                 segments.append({
@@ -126,23 +94,23 @@ def fetch_innertube_captions(video_id: str):
                 })
 
     if not full_text:
-        raise Exception("Parsed subtitle file contained no text.")
+        raise Exception("Subtitle XML contained no readable text lines.")
 
     return " ".join(full_text), segments
 
 def get_transcript(video_id: str):
     """
-    Multi-tier transcript resolution:
-    1. Primary: Direct Innertube API fetch (fast & reliable on cloud IPs)
-    2. Fallback: youtube_transcript_api library
+    Multi-tier transcript extractor:
+    1. Direct native timed-text parser
+    2. Fallback to youtube_transcript_api package
     """
-    # Strategy 1: Direct YouTube Innertube API
+    # Tier 1: Native direct scraper
     try:
-        return fetch_innertube_captions(video_id)
+        return fetch_direct_timedtext(video_id)
     except Exception:
         pass
 
-    # Strategy 2: youtube_transcript_api library fallback
+    # Tier 2: youtube_transcript_api fallback
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
         transcript_data = YouTubeTranscriptApi.get_transcript(video_id)
@@ -163,4 +131,4 @@ def get_transcript(video_id: str):
     except Exception:
         pass
 
-    raise Exception("Closed captions/transcripts are disabled or unavailable for this video.")
+    raise Exception(f"Closed captions or subtitles are unavailable for video ID: {video_id}. Please ensure the video has English or auto-generated subtitles.")
