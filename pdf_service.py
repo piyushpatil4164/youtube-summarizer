@@ -16,7 +16,7 @@ class LecturePDF(FPDF):
         self.cell(self.epw, 8, f'Page {self.page_no()}', border=0, align='C')
 
 def sanitize_pdf_text(text: str) -> str:
-    """Safely normalizes markdown and encodes text into standard PDF-compatible characters."""
+    """Normalizes Markdown formatting and character sets for clean PDF rendering."""
     replacements = {
         '\u2018': "'", '\u2019': "'",
         '\u201c': '"', '\u201d': '"',
@@ -28,16 +28,14 @@ def sanitize_pdf_text(text: str) -> str:
     for orig, rep in replacements.items():
         text = text.replace(orig, rep)
     
-    # Strip markdown bold/italic asterisks for clean text rendering
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
     text = re.sub(r'\*(.*?)\*', r'\1', text)
     text = re.sub(r'`(.*?)`', r'\1', text)
     
-    # Encode to latin-1 compatible characters
     return text.encode('latin-1', 'replace').decode('latin-1')
 
 def create_pdf(markdown_text: str) -> bytes:
-    """Generates an in-memory PDF without crashing on long tokens, layout boundaries, or unicode."""
+    """Generates a downloadable PDF document."""
     try:
         pdf = LecturePDF()
         pdf.set_auto_page_break(auto=True, margin=15)
@@ -57,26 +55,22 @@ def create_pdf(markdown_text: str) -> bytes:
                 pdf.ln(3)
                 continue
             
-            # Level 1 Heading
             if line_str.startswith('# '):
                 pdf.ln(2)
                 pdf.set_font("Helvetica", 'B', 13)
                 pdf.set_text_color(30, 41, 59)
                 pdf.multi_cell(pdf.epw, 6, line_str.replace('# ', ''))
                 pdf.ln(1)
-            # Level 2 Heading
             elif line_str.startswith('## '):
                 pdf.ln(2)
                 pdf.set_font("Helvetica", 'B', 11)
                 pdf.set_text_color(79, 70, 229)
                 pdf.multi_cell(pdf.epw, 5, line_str.replace('## ', ''))
                 pdf.ln(1)
-            # Level 3 Heading
             elif line_str.startswith('### '):
                 pdf.set_font("Helvetica", 'B', 10)
                 pdf.set_text_color(51, 65, 85)
                 pdf.multi_cell(pdf.epw, 5, line_str.replace('### ', ''))
-            # Normal Text & Bullets
             else:
                 pdf.set_font("Helvetica", size=9.5)
                 pdf.set_text_color(30, 30, 30)
@@ -85,7 +79,6 @@ def create_pdf(markdown_text: str) -> bytes:
         return bytes(pdf.output())
 
     except Exception:
-        # Failsafe fallback: return simple raw PDF to avoid crashing Streamlit UI
         fallback_pdf = FPDF()
         fallback_pdf.add_page()
         fallback_pdf.set_font("Helvetica", size=10)
