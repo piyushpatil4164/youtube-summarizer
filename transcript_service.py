@@ -1,9 +1,13 @@
 import re
+import json
 import html
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
+import urllib.request
+import urllib.parse
+import xml.etree.ElementTree as ET
+from youtube_transcript_api import YouTubeTranscriptApi
 
 def extract_video_id(url: str) -> str | None:
-    """Extracts standard 11-character YouTube video ID from any valid YouTube URL."""
+    """Extracts standard 11-character YouTube video ID from any valid URL."""
     if not url:
         return None
     url = url.strip()
@@ -30,68 +34,91 @@ def format_timestamp(seconds: float) -> str:
     secs = int(seconds % 60)
     return f"{minutes:02d}:{secs:02d}"
 
+def fetch_via_player_api(video_id: str):
+    """Fetches captions using Innertube Android Client payload."""
+    url = "https://www.youtube.com/youtubei/v1/player"
+    payload = {
+        "context": {
+            "client": {
+                "clientName": "ANDROID",
+                "clientVersion": "19.09.37",
+                "hl": "en"
+            }
+        },
+        "videoId": video_id
+    }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode('utf-8'),
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "com.google.android.youtube/19.09.37 (Linux; U; Android 11)"
+        }
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data = json.loads(resp.read().decode('utf-8'))
+
+    tracks = data.get("captions", {}).get("playerCaptionsTracklistRenderer", {}).get("captionTracks", [])
+    if not tracks:
+        raise Exception("No tracks available via Innertube API.")
+
+    base_url = next((t["baseUrl"] for t in tracks if t.get("languageCode", "").startswith("en")), tracks[0]["baseUrl"])
+    
+    cap_req = urllib.request.Request(base_url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(cap_req, timeout=10) as cap_resp:
+        xml_data = cap_resp.read().decode('utf-8', errors='ignore')
+
+    root = ET.fromstring(xml_data)
+    segments, full_text = [], []
+    for elem in root.iter('text'):
+        if elem.text:
+            text = html.unescape(elem.text).replace('\n', ' ').strip()
+            start_sec = float(elem.get('start', 0.0))
+            if text:
+                segments.append({"timestamp": format_timestamp(start_sec), "text": text})
+                full_text.append(text)
+
+    if not full_text:
+        raise Exception("Parsed empty XML caption content.")
+    return " ".join(full_text), segments
+
 def get_transcript(video_id: str):
-    """
-    Robust multi-strategy transcript retriever:
-    1. Look up transcript list and find manual or generated English tracks.
-    2. Fallback to any language track and auto-translate to English.
-    3. Direct fetch as last resort.
-    """
-    transcript_data = None
-    fetch_error = None
-
+    """Multi-tiered transcript retrieval."""
+    # Strategy 1: YouTubeTranscriptApi List search
     try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        
-        # Priority 1: Preferred English and common variants
+        t_list = YouTubeTranscriptApi.list_transcripts(video_id)
         try:
-            target_langs = ['en', 'en-US', 'en-GB', 'en-CA', 'en-IN', 'hi', 'es', 'fr', 'de']
-            t = transcript_list.find_transcript(target_langs)
-            transcript_data = t.fetch()
+            t = t_list.find_transcript(['en', 'en-US', 'en-GB', 'en-IN', 'hi', 'es', 'fr', 'de'])
+            data = t.fetch()
         except Exception:
-            pass
+            data = next(iter(t_list)).fetch()
 
-        # Priority 2: If foreign language only, translate to English
-        if not transcript_data:
-            try:
-                first_track = next(iter(transcript_list))
-                if first_track.is_translatable:
-                    transcript_data = first_track.translate('en').fetch()
-                else:
-                    transcript_data = first_track.fetch()
-            except Exception:
-                pass
+        full_text, segments = [], []
+        for item in data:
+            t_str = html.unescape(item.get('text', '')).replace('\n', ' ').strip()
+            s_sec = item.get('start', 0.0)
+            if t_str:
+                full_text.append(t_str)
+                segments.append({"timestamp": format_timestamp(s_sec), "text": t_str})
+        if full_text:
+            return " ".join(full_text), segments
+    except Exception:
+        pass
 
-    except Exception as e:
-        fetch_error = e
+    # Strategy 2: Direct Innertube player endpoint
+    try:
+        return fetch_via_player_api(video_id)
+    except Exception:
+        pass
 
-    # Priority 3: Direct API call
-    if not transcript_data:
-        try:
-            transcript_data = YouTubeTranscriptApi.get_transcript(video_id)
-        except Exception as e:
-            fetch_error = e
+    # Strategy 3: Direct API fallback
+    try:
+        data = YouTubeTranscriptApi.get_transcript(video_id)
+        full_text = [html.unescape(i['text']).replace('\n', ' ').strip() for i in data if i.get('text')]
+        segments = [{"timestamp": format_timestamp(i['start']), "text": html.unescape(i['text']).replace('\n', ' ').strip()} for i in data if i.get('text')]
+        if full_text:
+            return " ".join(full_text), segments
+    except Exception:
+        pass
 
-    if not transcript_data:
-        raise Exception(f"Closed captions or subtitles are unavailable for this video (ID: {video_id}). Please check that the video has CC enabled on YouTube.")
-
-    full_text_list = []
-    segments = []
-
-    for item in transcript_data:
-        raw_t = item.get('text', '')
-        if raw_t:
-            clean_t = html.unescape(raw_t).replace('\n', ' ').strip()
-            start_sec = float(item.get('start', 0.0))
-            if clean_t:
-                full_text_list.append(clean_t)
-                segments.append({
-                    "timestamp": format_timestamp(start_sec),
-                    "text": clean_t
-                })
-
-    raw_text = " ".join(full_text_list)
-    if not raw_text.strip():
-        raise Exception("The extracted subtitle track contains no readable text.")
-
-    return raw_text, segments
+    raise Exception(f"YouTube blocked or could not find captions for ID ({video_id}). Use the 'Paste Transcript Manually' box below.")
