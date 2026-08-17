@@ -1,7 +1,7 @@
 from groq import Groq
 
 def chunk_text(text: str, max_chars: int = 14000) -> list[str]:
-    """Splits long transcripts into safe chunks to stay within TPM rate limits."""
+    """Splits transcripts into manageable chunks within Groq TPM limit."""
     words = text.split()
     chunks = []
     current_chunk = []
@@ -20,9 +20,8 @@ def chunk_text(text: str, max_chars: int = 14000) -> list[str]:
         
     return chunks if chunks else [text]
 
-
 def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "Standard", language: str = "English") -> str:
-    """Generates structured notes in the selected language without hitting token limits."""
+    """Generates structured notes in the selected language."""
     client = Groq(api_key=api_key)
     chunks = chunk_text(text, max_chars=13000)
     
@@ -73,7 +72,6 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
 
     selected_prompt = prompts.get(mode, prompts["Detailed Study Notes"])
 
-    # Single-pass execution for standard videos
     if len(chunks) == 1:
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
@@ -86,7 +84,6 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
         )
         return response.choices[0].message.content
 
-    # Multi-part Map-Reduce for long lectures
     intermediate_summaries = []
     for idx, c in enumerate(chunks[:3]):
         resp = client.chat.completions.create(
@@ -101,7 +98,6 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
         intermediate_summaries.append(resp.choices[0].message.content)
 
     combined_intermediate = "\n\n".join(intermediate_summaries)
-
     final_response = client.chat.completions.create(
         model="llama-3.1-8b-instant",
         messages=[
@@ -113,9 +109,8 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
     )
     return final_response.choices[0].message.content
 
-
 def ask_video_question(transcript_text: str, question: str, api_key: str, language: str = "English") -> str:
-    """Answers user questions based on the transcript in the selected language."""
+    """Answers user questions based on the video transcript."""
     client = Groq(api_key=api_key)
     safe_transcript = transcript_text[:12000]
 
@@ -130,9 +125,8 @@ def ask_video_question(transcript_text: str, question: str, api_key: str, langua
     )
     return response.choices[0].message.content
 
-
 def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
-    """Generates Mermaid.js flowchart code."""
+    """Generates clean Mermaid.js flowchart code."""
     client = Groq(api_key=api_key)
     safe_transcript = transcript_text[:8000]
 
