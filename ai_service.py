@@ -1,7 +1,33 @@
 from groq import Groq
 
+# Model fallback list to ensure zero 404 errors across all Groq API tiers
+MODEL_CANDIDATES = [
+    "llama3-8b-8192",
+    "llama-3.3-70b-versatile",
+    "llama3-70b-8192",
+    "mixtral-8x7b-32768",
+    "gemma2-9b-it"
+]
+
+def call_groq_completion(client: Groq, messages: list, max_tokens: int = 1500, temperature: float = 0.3) -> str:
+    """Tries active Groq models in sequence until a valid available model responds."""
+    last_err = None
+    for model_name in MODEL_CANDIDATES:
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            last_err = e
+            continue
+    raise Exception(f"Groq API call failed across all models: {str(last_err)}")
+
 def chunk_text(text: str, max_chars: int = 14000) -> list[str]:
-    """Splits transcript text into bounded chunks to stay within TPM rate limits."""
+    """Splits transcript text into bounded chunks to stay within TPM limits."""
     words = text.split()
     chunks = []
     current_chunk = []
@@ -21,7 +47,7 @@ def chunk_text(text: str, max_chars: int = 14000) -> list[str]:
     return chunks if chunks else [text]
 
 def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "Standard", language: str = "English") -> str:
-    """Generates structured notes in the selected language."""
+    """Generates structured notes in the chosen language."""
     client = Groq(api_key=api_key)
     chunks = chunk_text(text, max_chars=13000)
     
@@ -72,72 +98,50 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
 
     selected_prompt = prompts.get(mode, prompts["Detailed Study Notes"])
 
+    # Single-pass execution for standard length
     if len(chunks) == 1:
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": "You are an elite academic AI assistant dedicated to high-precision study synthesis."},
-                {"role": "user", "content": f"{selected_prompt}\n\n--- TRANSCRIPT ---\n{chunks[0]}"}
-            ],
-            temperature=0.3,
-            max_tokens=1500
-        )
-        return response.choices[0].message.content
+        messages = [
+            {"role": "system", "content": "You are an elite academic AI assistant dedicated to high-precision study synthesis."},
+            {"role": "user", "content": f"{selected_prompt}\n\n--- TRANSCRIPT ---\n{chunks[0]}"}
+        ]
+        return call_groq_completion(client, messages, max_tokens=1500, temperature=0.3)
 
+    # Multi-pass execution for long transcripts
     intermediate_summaries = []
     for idx, c in enumerate(chunks[:3]):
-        resp = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": f"Summarize key academic concepts from this lecture part concisely in {language}."},
-                {"role": "user", "content": f"Part {idx+1} transcript:\n{c}"}
-            ],
-            temperature=0.3,
-            max_tokens=500
-        )
-        intermediate_summaries.append(resp.choices[0].message.content)
+        messages = [
+            {"role": "system", "content": f"Summarize key academic concepts from this lecture part concisely in {language}."},
+            {"role": "user", "content": f"Part {idx+1} transcript:\n{c}"}
+        ]
+        part_summary = call_groq_completion(client, messages, max_tokens=500, temperature=0.3)
+        intermediate_summaries.append(part_summary)
 
     combined_intermediate = "\n\n".join(intermediate_summaries)
-    final_response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[
-            {"role": "system", "content": f"Synthesize multi-part notes into a unified study guide in {language}."},
-            {"role": "user", "content": f"{selected_prompt}\n\n--- COMBINED SUMMARY POINTS ---\n{combined_intermediate}"}
-        ],
-        temperature=0.3,
-        max_tokens=1800
-    )
-    return final_response.choices[0].message.content
+    final_messages = [
+        {"role": "system", "content": f"Synthesize multi-part notes into a unified study guide in {language}."},
+        {"role": "user", "content": f"{selected_prompt}\n\n--- COMBINED SUMMARY POINTS ---\n{combined_intermediate}"}
+    ]
+    return call_groq_completion(client, final_messages, max_tokens=1800, temperature=0.3)
 
 def ask_video_question(transcript_text: str, question: str, api_key: str, language: str = "English") -> str:
-    """Answers specific user questions based on lecture context."""
+    """Answers user doubts based on lecture content."""
     client = Groq(api_key=api_key)
     safe_transcript = transcript_text[:12000]
 
-    response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[
-            {"role": "system", "content": f"Answer the question accurately in {language} using ONLY the lecture content provided."},
-            {"role": "user", "content": f"Lecture Excerpt:\n{safe_transcript}\n\nQuestion: {question}"}
-        ],
-        temperature=0.2,
-        max_tokens=600
-    )
-    return response.choices[0].message.content
+    messages = [
+        {"role": "system", "content": f"Answer the question accurately in {language} using ONLY the lecture content provided."},
+        {"role": "user", "content": f"Lecture Excerpt:\n{safe_transcript}\n\nQuestion: {question}"}
+    ]
+    return call_groq_completion(client, messages, max_tokens=600, temperature=0.2)
 
 def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
-    """Generates Mermaid.js diagram graph structure."""
+    """Generates Mermaid.js diagram flowchart code."""
     client = Groq(api_key=api_key)
     safe_transcript = transcript_text[:8000]
 
-    response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[
-            {"role": "system", "content": "Output ONLY valid Mermaid.js graph code starting with 'graph TD'. No markdown code blocks, backticks, or extra commentary."},
-            {"role": "user", "content": f"Lecture content:\n{safe_transcript}"}
-        ],
-        temperature=0.2,
-        max_tokens=500
-    )
-    raw_code = response.choices[0].message.content.strip()
+    messages = [
+        {"role": "system", "content": "Output ONLY valid Mermaid.js graph code starting with 'graph TD'. No markdown code blocks, backticks, or extra explanation."},
+        {"role": "user", "content": f"Lecture content:\n{safe_transcript}"}
+    ]
+    raw_code = call_groq_completion(client, messages, max_tokens=500, temperature=0.2)
     return raw_code.replace("```mermaid", "").replace("```", "").strip()
