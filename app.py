@@ -53,31 +53,20 @@ with col_toggle:
 
 is_dark = st.session_state["theme_mode"] == "Dark"
 
-# 1. Dedicated Dark Mode Stylesheet
+# 1. Dark Mode CSS
 DARK_CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
     * { font-family: 'Plus Jakarta Sans', sans-serif; }
 
-    .stApp {
-        background-color: #0B0F19 !important;
-        color: #F8FAFC !important;
-    }
+    .stApp { background-color: #0B0F19 !important; color: #F8FAFC !important; }
     section[data-testid="stSidebar"] {
         background-color: #111827 !important;
         border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
     }
-    header[data-testid="stHeader"] {
-        background-color: transparent !important;
-    }
-    header[data-testid="stHeader"] * {
-        color: #F8FAFC !important;
-        fill: #F8FAFC !important;
-    }
-    
-    h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown {
-        color: #F8FAFC !important;
-    }
+    header[data-testid="stHeader"] { background-color: transparent !important; }
+    header[data-testid="stHeader"] * { color: #F8FAFC !important; fill: #F8FAFC !important; }
+    h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown { color: #F8FAFC !important; }
 
     .hero-container {
         background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.12) 100%) !important;
@@ -93,7 +82,6 @@ DARK_CSS = """
         color: #A5B4FC !important;
         border: 1px solid rgba(99, 102, 241, 0.5) !important;
     }
-
     .metric-card {
         background: rgba(255, 255, 255, 0.05) !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
@@ -101,15 +89,8 @@ DARK_CSS = """
         padding: 1.2rem;
         text-align: center;
     }
-    .metric-value {
-        color: #818CF8 !important;
-        font-size: 1.7rem;
-        font-weight: 800;
-    }
-    .metric-label {
-        color: #94A3B8 !important;
-        font-size: 0.85rem;
-    }
+    .metric-value { color: #818CF8 !important; font-size: 1.7rem; font-weight: 800; }
+    .metric-label { color: #94A3B8 !important; font-size: 0.85rem; }
 
     div[data-testid="stTextInput"] input {
         background-color: #1E293B !important;
@@ -117,22 +98,14 @@ DARK_CSS = """
         border: 1px solid rgba(255, 255, 255, 0.18) !important;
         border-radius: 8px;
     }
-
     div[data-baseweb="select"] > div {
         background-color: #1E293B !important;
         color: #FFFFFF !important;
         border: 1px solid rgba(255, 255, 255, 0.18) !important;
     }
-    div[data-baseweb="select"] * {
-        color: #FFFFFF !important;
-        fill: #FFFFFF !important;
-    }
-    ul[data-baseweb="menu"] {
-        background-color: #1E293B !important;
-    }
-    ul[data-baseweb="menu"] li {
-        color: #FFFFFF !important;
-    }
+    div[data-baseweb="select"] * { color: #FFFFFF !important; fill: #FFFFFF !important; }
+    ul[data-baseweb="menu"] { background-color: #1E293B !important; }
+    ul[data-baseweb="menu"] li { color: #FFFFFF !important; }
 
     button[kind="secondary"] {
         background-color: #1E293B !important;
@@ -145,7 +118,6 @@ DARK_CSS = """
         border-color: #818CF8 !important;
         color: #FFFFFF !important;
     }
-
     button[kind="primary"] {
         background: linear-gradient(90deg, #6366F1, #4F46E5) !important;
         color: #FFFFFF !important;
@@ -160,35 +132,21 @@ DARK_CSS = """
 </style>
 """
 
-# 2. Dedicated Light Mode Stylesheet
+# 2. Light Mode CSS
 LIGHT_CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
     * { font-family: 'Plus Jakarta Sans', sans-serif; }
 
-    .stApp {
-        background-color: #F8FAFC !important;
-        color: #0F172A !important;
-    }
+    .stApp { background-color: #F8FAFC !important; color: #0F172A !important; }
     section[data-testid="stSidebar"] {
         background-color: #FFFFFF !important;
         border-right: 1px solid #E2E8F0 !important;
     }
-    header[data-testid="stHeader"] {
-        background-color: transparent !important;
-    }
-    header[data-testid="stHeader"] * {
-        color: #0F172A !important;
-        fill: #0F172A !important;
-    }
-    div[data-testid="stToolbar"] * {
-        color: #0F172A !important;
-        fill: #0F172A !important;
-    }
-
-    h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown {
-        color: #0F172A !important;
-    }
+    header[data-testid="stHeader"] { background-color: transparent !important; }
+    header[data-testid="stHeader"] * { color: #0F172A !important; fill: #0F172A !important; }
+    div[data-testid="stToolbar"] * { color: #0F172A !important; fill: #0F172A !important; }
+    h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown { color: #0F172A !important; }
 
     .hero-container {
         background: linear-gradient(135deg, #EEF2FF 0%, #FAF5FF 100%) !important;
@@ -206,7 +164,6 @@ LIGHT_CSS = """
         color: #4338CA !important;
         border: 1px solid #C7D2FE !important;
     }
-
     .metric-card {
         background: #FFFFFF !important;
         border: 1px solid #E2E8F0 !important;
@@ -215,15 +172,8 @@ LIGHT_CSS = """
         text-align: center;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
     }
-    .metric-value {
-        color: #4F46E5 !important;
-        font-size: 1.7rem;
-        font-weight: 800;
-    }
-    .metric-label {
-        color: #64748B !important;
-        font-size: 0.85rem;
-    }
+    .metric-value { color: #4F46E5 !important; font-size: 1.7rem; font-weight: 800; }
+    .metric-label { color: #64748B !important; font-size: 0.85rem; }
 
     div[data-testid="stTextInput"] input {
         background-color: #FFFFFF !important;
@@ -231,22 +181,14 @@ LIGHT_CSS = """
         border: 1px solid #CBD5E1 !important;
         border-radius: 8px;
     }
-
     div[data-baseweb="select"] > div {
         background-color: #FFFFFF !important;
         color: #0F172A !important;
         border: 1px solid #CBD5E1 !important;
     }
-    div[data-baseweb="select"] * {
-        color: #0F172A !important;
-        fill: #0F172A !important;
-    }
-    ul[data-baseweb="menu"] {
-        background-color: #FFFFFF !important;
-    }
-    ul[data-baseweb="menu"] li {
-        color: #0F172A !important;
-    }
+    div[data-baseweb="select"] * { color: #0F172A !important; fill: #0F172A !important; }
+    ul[data-baseweb="menu"] { background-color: #FFFFFF !important; }
+    ul[data-baseweb="menu"] li { color: #0F172A !important; }
 
     button[kind="secondary"] {
         background-color: #FFFFFF !important;
@@ -260,7 +202,6 @@ LIGHT_CSS = """
         border-color: #6366F1 !important;
         color: #4F46E5 !important;
     }
-
     button[kind="primary"] {
         background: linear-gradient(90deg, #4F46E5, #4338CA) !important;
         color: #FFFFFF !important;
@@ -275,10 +216,8 @@ LIGHT_CSS = """
 </style>
 """
 
-# Inject Selected Theme CSS
 st.markdown(DARK_CSS if is_dark else LIGHT_CSS, unsafe_allow_html=True)
 
-# Shared Core Styles
 st.markdown("""
 <style>
     .badge {
@@ -438,14 +377,17 @@ if 'summary' in st.session_state:
                     use_container_width=True
                 )
             with d2:
-                pdf_bytes = create_pdf(st.session_state['summary'])
-                st.download_button(
-                    "📄 Download PDF (.pdf)",
-                    data=pdf_bytes,
-                    file_name="study_notes.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
+                try:
+                    pdf_bytes = create_pdf(st.session_state['summary'])
+                    st.download_button(
+                        "📄 Download PDF (.pdf)",
+                        data=pdf_bytes,
+                        file_name="study_notes.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+                except Exception:
+                    st.caption("PDF generation preview unavailable for this formatting.")
 
         with tab_chat:
             st.subheader("💬 Ask Doubts from this Lecture")
