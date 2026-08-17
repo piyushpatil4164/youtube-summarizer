@@ -35,12 +35,8 @@ if "theme_mode" not in st.session_state:
     st.session_state["theme_mode"] = "Dark"
 if "qa_history" not in st.session_state:
     st.session_state["qa_history"] = []
-if "url_input" not in st.session_state:
-    st.session_state["url_input"] = ""
-
-# Callback for sample buttons
-def set_sample_url(url: str):
-    st.session_state["url_input"] = url
+if "current_url" not in st.session_state:
+    st.session_state["current_url"] = ""
 
 # Top Bar Header & Theme Switcher
 col_title, col_toggle = st.columns([5, 1.5])
@@ -133,6 +129,7 @@ DARK_CSS = """
         color: #FFFFFF !important;
         border: 1px solid rgba(255, 255, 255, 0.18) !important;
         border-radius: 8px;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
     div[data-testid="stTextInput"] input:focus {
         border-color: #818CF8 !important;
@@ -386,39 +383,27 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Quick Sample Links (Connected via on_click handlers)
+# Quick Sample Links
 col_lbl, c1, c2, c3 = st.columns([1.5, 2, 2, 2])
 with col_lbl:
     st.markdown("**Sample Lectures:**")
 with c1:
-    st.button(
-        "🧠 Neural Networks", 
-        use_container_width=True, 
-        on_click=set_sample_url, 
-        args=("https://www.youtube.com/watch?v=aircAruvnKk",),
-        help="Load 3Blue1Brown Neural Networks Lecture"
-    )
+    if st.button("🧠 Neural Networks", use_container_width=True, help="Load 3Blue1Brown Neural Networks Lecture"):
+        st.session_state["current_url"] = "https://www.youtube.com/watch?v=aircAruvnKk"
+        st.rerun()
 with c2:
-    st.button(
-        "🐍 Python in 100s", 
-        use_container_width=True, 
-        on_click=set_sample_url, 
-        args=("https://www.youtube.com/watch?v=dhgEAm8384U",),
-        help="Load Fireship Python Crash Course"
-    )
+    if st.button("🐍 Python in 100s", use_container_width=True, help="Load Fireship Python Crash Course"):
+        st.session_state["current_url"] = "https://www.youtube.com/watch?v=dhgEAm8384U"
+        st.rerun()
 with c3:
-    st.button(
-        "🌐 Operating Systems", 
-        use_container_width=True, 
-        on_click=set_sample_url, 
-        args=("https://www.youtube.com/watch?v=26QPDBe-NB8",),
-        help="Load Operating Systems Fundamentals"
-    )
+    if st.button("🌐 Operating Systems", use_container_width=True, help="Load Operating Systems Fundamentals"):
+        st.session_state["current_url"] = "https://www.youtube.com/watch?v=26QPDBe-NB8"
+        st.rerun()
 
-# Video Input Bound to Session State
+# Video Input
 url_input = st.text_input(
     "Enter YouTube Video URL:", 
-    key="url_input",
+    value=st.session_state.get("current_url", ""), 
     placeholder="https://www.youtube.com/watch?v=aircAruvnKk",
     help="Paste any standard YouTube video or Shorts link"
 )
@@ -434,7 +419,7 @@ with col_btn:
 
 # Processing Logic
 if generate_clicked:
-    target_url = st.session_state.get("url_input", "").strip()
+    target_url = url_input.strip()
     if not target_url:
         st.error("Please enter or select a YouTube URL.")
     elif not active_api_key:
