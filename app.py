@@ -237,7 +237,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Sidebar Configuration
+# Sidebar Configuration (English by default, no unnecessary language dropdown)
 with st.sidebar:
     st.markdown("### 🛠️ Study Controls")
     summary_mode = st.selectbox(
@@ -250,11 +250,7 @@ with st.sidebar:
             "Formula & Keyword Cheat Sheet"
         ]
     )
-    col_opt1, col_opt2 = st.columns(2)
-    with col_opt1:
-        detail_level = st.selectbox("Depth:", ["Standard", "Concise", "In-Depth"])
-    with col_opt2:
-        output_lang = st.selectbox("Language:", ["English", "Hindi", "Hinglish", "Spanish", "French"])
+    detail_level = st.selectbox("Depth:", ["Standard", "Concise", "In-Depth"])
 
     st.markdown("---")
     st.caption("🔒 System secured via Cloud Secret Management.")
@@ -306,7 +302,7 @@ if generate_clicked:
                     raw_text, segments = get_transcript(video_id)
 
                 with st.spinner(f"Generating {summary_mode}..."):
-                    notes = generate_summary(raw_text, summary_mode, active_api_key, detail_level, output_lang)
+                    notes = generate_summary(raw_text, summary_mode, active_api_key, detail_level)
 
                 total_words = len(raw_text.split())
                 summary_words = len(notes.split())
@@ -416,7 +412,7 @@ if 'summary' in st.session_state:
                 </div>
                 <script type="module">
                     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-                    mermaid.initialize({{ startOnLoad: true, theme: 'dark' }});
+                    mermaid.initialize({{ startOnLoad: true, theme: '{"dark" if is_dark else "default"}' }});
                 </script>
                 """
                 components.html(mermaid_html, height=450, scrolling=True)
@@ -432,7 +428,6 @@ if 'summary' in st.session_state:
             for seg in filtered[:120]:
                 st.markdown(f"**`{seg['timestamp']}`** : {seg['text']}")
 
-    # FIXED: changed from right_view to right_col
     with right_col:
         st.subheader("📺 Video Player")
         st.video(f"https://www.youtube.com/watch?v={st.session_state['video_id']}")
