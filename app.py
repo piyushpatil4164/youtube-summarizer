@@ -416,7 +416,7 @@ if 'summary' in st.session_state:
                 </div>
                 <script type="module">
                     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-                    mermaid.initialize({{ startOnLoad: true, theme: '{"dark" if is_dark else "default"}' }});
+                    mermaid.initialize({{ startOnLoad: true, theme: 'dark' }});
                 </script>
                 """
                 components.html(mermaid_html, height=450, scrolling=True)
@@ -432,6 +432,7 @@ if 'summary' in st.session_state:
             for seg in filtered[:120]:
                 st.markdown(f"**`{seg['timestamp']}`** : {seg['text']}")
 
-    with right_view:
+    # FIXED: changed from right_view to right_col
+    with right_col:
         st.subheader("📺 Video Player")
         st.video(f"https://www.youtube.com/watch?v={st.session_state['video_id']}")
