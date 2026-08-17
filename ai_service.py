@@ -1,7 +1,7 @@
 from groq import Groq
 
 def chunk_text(text: str, max_chars: int = 14000) -> list[str]:
-    """Splits transcripts into manageable chunks within Groq TPM limit."""
+    """Splits transcript into chunks to stay within TPM rate limits."""
     words = text.split()
     chunks = []
     current_chunk = []
