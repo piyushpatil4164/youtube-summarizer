@@ -35,6 +35,12 @@ if "theme_mode" not in st.session_state:
     st.session_state["theme_mode"] = "Dark"
 if "qa_history" not in st.session_state:
     st.session_state["qa_history"] = []
+if "url_input" not in st.session_state:
+    st.session_state["url_input"] = ""
+
+# Callback for sample buttons
+def set_sample_url(url: str):
+    st.session_state["url_input"] = url
 
 # Top Bar Header & Theme Switcher
 col_title, col_toggle = st.columns([5, 1.5])
@@ -69,7 +75,6 @@ DARK_CSS = """
         border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
     }
 
-    /* Top-Right Header Icons & Streamlit Toolbar */
     header[data-testid="stHeader"] { background-color: transparent !important; }
     header[data-testid="stHeader"] button,
     header[data-testid="stHeader"] a,
@@ -82,12 +87,10 @@ DARK_CSS = """
         opacity: 0.95 !important;
     }
 
-    /* Typography */
     h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown {
         color: #F8FAFC !important;
     }
 
-    /* Hero Banner */
     .hero-container {
         background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.12) 100%) !important;
         border: 1px solid rgba(255, 255, 255, 0.14) !important;
@@ -103,7 +106,6 @@ DARK_CSS = """
         border: 1px solid rgba(99, 102, 241, 0.5) !important;
     }
 
-    /* Metric Cards */
     .metric-card {
         background: rgba(255, 255, 255, 0.05) !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
@@ -126,13 +128,11 @@ DARK_CSS = """
         font-size: 0.85rem;
     }
 
-    /* Form Controls */
     div[data-testid="stTextInput"] input {
         background-color: #1E293B !important;
         color: #FFFFFF !important;
         border: 1px solid rgba(255, 255, 255, 0.18) !important;
         border-radius: 8px;
-        transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
     div[data-testid="stTextInput"] input:focus {
         border-color: #818CF8 !important;
@@ -145,18 +145,10 @@ DARK_CSS = """
         border: 1px solid rgba(255, 255, 255, 0.18) !important;
         border-radius: 8px;
     }
-    div[data-baseweb="select"] * {
-        color: #FFFFFF !important;
-        fill: #FFFFFF !important;
-    }
-    ul[data-baseweb="menu"] {
-        background-color: #1E293B !important;
-    }
-    ul[data-baseweb="menu"] li:hover {
-        background-color: #334155 !important;
-    }
+    div[data-baseweb="select"] * { color: #FFFFFF !important; fill: #FFFFFF !important; }
+    ul[data-baseweb="menu"] { background-color: #1E293B !important; }
+    ul[data-baseweb="menu"] li:hover { background-color: #334155 !important; }
 
-    /* Buttons */
     button[kind="secondary"] {
         background-color: #1E293B !important;
         color: #F8FAFC !important;
@@ -204,7 +196,6 @@ LIGHT_CSS = """
         box-shadow: 2px 0 10px rgba(0, 0, 0, 0.02) !important;
     }
 
-    /* Fixed Streamlit Top-Right Icons */
     header[data-testid="stHeader"] { background-color: transparent !important; }
     header[data-testid="stHeader"] button,
     header[data-testid="stHeader"] a,
@@ -222,12 +213,10 @@ LIGHT_CSS = """
         stroke: #4F46E5 !important;
     }
 
-    /* Typography */
     h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown {
         color: #0F172A !important;
     }
 
-    /* Hero Banner */
     .hero-container {
         background: linear-gradient(135deg, #FFFFFF 0%, #EEF2FF 100%) !important;
         border: 1px solid #C7D2FE !important;
@@ -245,7 +234,6 @@ LIGHT_CSS = """
         border: 1px solid #C7D2FE !important;
     }
 
-    /* Metric Cards */
     .metric-card {
         background: #FFFFFF !important;
         border: 1px solid #E2E8F0 !important;
@@ -271,7 +259,6 @@ LIGHT_CSS = """
         font-weight: 500;
     }
 
-    /* Form Controls */
     div[data-testid="stTextInput"] input {
         background-color: #FFFFFF !important;
         color: #0F172A !important;
@@ -295,25 +282,17 @@ LIGHT_CSS = """
     div[data-baseweb="select"] > div:hover {
         border-color: #6366F1 !important;
     }
-    div[data-baseweb="select"] * {
-        color: #0F172A !important;
-        fill: #0F172A !important;
-    }
+    div[data-baseweb="select"] * { color: #0F172A !important; fill: #0F172A !important; }
     ul[data-baseweb="menu"] {
         background-color: #FFFFFF !important;
         border: 1px solid #E2E8F0 !important;
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08) !important;
-    }
-    ul[data-baseweb="menu"] li {
-        color: #0F172A !important;
-        transition: background-color 0.15s ease;
     }
     ul[data-baseweb="menu"] li:hover {
         background-color: #EEF2FF !important;
         color: #4F46E5 !important;
     }
 
-    /* Buttons */
     button[kind="secondary"] {
         background-color: #FFFFFF !important;
         color: #1E293B !important;
@@ -407,25 +386,39 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Quick Sample Links
+# Quick Sample Links (Connected via on_click handlers)
 col_lbl, c1, c2, c3 = st.columns([1.5, 2, 2, 2])
 with col_lbl:
     st.markdown("**Sample Lectures:**")
 with c1:
-    if st.button("🧠 Neural Networks", use_container_width=True, help="Load 3Blue1Brown Neural Networks Lecture"):
-        st.session_state['url_input_val'] = "https://www.youtube.com/watch?v=aircAruvnKk"
+    st.button(
+        "🧠 Neural Networks", 
+        use_container_width=True, 
+        on_click=set_sample_url, 
+        args=("https://www.youtube.com/watch?v=aircAruvnKk",),
+        help="Load 3Blue1Brown Neural Networks Lecture"
+    )
 with c2:
-    if st.button("🐍 Python in 100s", use_container_width=True, help="Load Fireship Python Crash Course"):
-        st.session_state['url_input_val'] = "https://www.youtube.com/watch?v=dhgEAm8384U"
+    st.button(
+        "🐍 Python in 100s", 
+        use_container_width=True, 
+        on_click=set_sample_url, 
+        args=("https://www.youtube.com/watch?v=dhgEAm8384U",),
+        help="Load Fireship Python Crash Course"
+    )
 with c3:
-    if st.button("🌐 Operating Systems", use_container_width=True, help="Load Operating Systems Fundamentals"):
-        st.session_state['url_input_val'] = "https://www.youtube.com/watch?v=26QPDBe-NB8"
+    st.button(
+        "🌐 Operating Systems", 
+        use_container_width=True, 
+        on_click=set_sample_url, 
+        args=("https://www.youtube.com/watch?v=26QPDBe-NB8",),
+        help="Load Operating Systems Fundamentals"
+    )
 
-# Video Input
-input_val = st.session_state.get('url_input_val', '')
+# Video Input Bound to Session State
 url_input = st.text_input(
     "Enter YouTube Video URL:", 
-    value=input_val, 
+    key="url_input",
     placeholder="https://www.youtube.com/watch?v=aircAruvnKk",
     help="Paste any standard YouTube video or Shorts link"
 )
@@ -441,14 +434,15 @@ with col_btn:
 
 # Processing Logic
 if generate_clicked:
-    if not url_input.strip():
-        st.error("Please enter a valid YouTube URL.")
+    target_url = st.session_state.get("url_input", "").strip()
+    if not target_url:
+        st.error("Please enter or select a YouTube URL.")
     elif not active_api_key:
         st.error("GROQ_API_KEY is not configured in Streamlit Secrets. Please add your key under app Settings > Secrets.")
     else:
-        video_id = extract_video_id(url_input)
+        video_id = extract_video_id(target_url)
         if not video_id:
-            st.error("Invalid YouTube URL format.")
+            st.error("Invalid YouTube URL format. Please paste a valid YouTube video link.")
         else:
             try:
                 with st.spinner("Extracting transcript and subtitles..."):
