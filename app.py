@@ -60,7 +60,6 @@ DARK_CSS = """
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
     * { font-family: 'Plus Jakarta Sans', sans-serif; }
 
-    /* App & Sidebar Layout */
     .stApp {
         background-color: #0B0F19 !important;
         color: #F8FAFC !important;
@@ -71,9 +70,7 @@ DARK_CSS = """
     }
 
     /* Top-Right Header Icons & Streamlit Toolbar */
-    header[data-testid="stHeader"] {
-        background-color: transparent !important;
-    }
+    header[data-testid="stHeader"] { background-color: transparent !important; }
     header[data-testid="stHeader"] button,
     header[data-testid="stHeader"] a,
     header[data-testid="stHeader"] svg,
@@ -159,7 +156,7 @@ DARK_CSS = """
         background-color: #334155 !important;
     }
 
-    /* Interactive Buttons & Hover States */
+    /* Buttons */
     button[kind="secondary"] {
         background-color: #1E293B !important;
         color: #F8FAFC !important;
@@ -191,13 +188,12 @@ DARK_CSS = """
 </style>
 """
 
-# 2. Refined High-Contrast Light Mode CSS
+# 2. Light Mode CSS
 LIGHT_CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
     * { font-family: 'Plus Jakarta Sans', sans-serif; }
 
-    /* App & Sidebar Layout */
     .stApp {
         background-color: #F8FAFC !important;
         color: #0F172A !important;
@@ -208,10 +204,8 @@ LIGHT_CSS = """
         box-shadow: 2px 0 10px rgba(0, 0, 0, 0.02) !important;
     }
 
-    /* Fixed Streamlit Top-Right Icons (Share, Star, Menu, GitHub) */
-    header[data-testid="stHeader"] {
-        background-color: transparent !important;
-    }
+    /* Fixed Streamlit Top-Right Icons */
+    header[data-testid="stHeader"] { background-color: transparent !important; }
     header[data-testid="stHeader"] button,
     header[data-testid="stHeader"] a,
     header[data-testid="stHeader"] svg,
@@ -319,7 +313,7 @@ LIGHT_CSS = """
         color: #4F46E5 !important;
     }
 
-    /* Buttons & Clear Hover States */
+    /* Buttons */
     button[kind="secondary"] {
         background-color: #FFFFFF !important;
         color: #1E293B !important;
@@ -352,10 +346,8 @@ LIGHT_CSS = """
 </style>
 """
 
-# Inject Selected Theme CSS
 st.markdown(DARK_CSS if is_dark else LIGHT_CSS, unsafe_allow_html=True)
 
-# Shared Core Styles
 st.markdown("""
 <style>
     .badge {
@@ -388,11 +380,20 @@ with st.sidebar:
         ],
         help="Select the AI synthesis format for your lecture notes"
     )
-    detail_level = st.selectbox(
-        "Depth:", 
-        ["Standard", "Concise", "In-Depth"],
-        help="Choose the granularity and level of explanation"
-    )
+    
+    col_s1, col_s2 = st.columns(2)
+    with col_s1:
+        detail_level = st.selectbox(
+            "Depth:", 
+            ["Standard", "Concise", "In-Depth"],
+            help="Choose the granularity and level of explanation"
+        )
+    with col_s2:
+        output_lang = st.selectbox(
+            "Language:", 
+            ["English", "Hindi", "Hinglish", "Spanish", "French", "German"],
+            help="Choose your preferred output language"
+        )
 
     st.markdown("---")
     st.caption("🔒 System secured via Cloud Secret Management.")
@@ -453,8 +454,8 @@ if generate_clicked:
                 with st.spinner("Extracting transcript and subtitles..."):
                     raw_text, segments = get_transcript(video_id)
 
-                with st.spinner(f"Generating {summary_mode}..."):
-                    notes = generate_summary(raw_text, summary_mode, active_api_key, detail_level)
+                with st.spinner(f"Generating {summary_mode} in {output_lang}..."):
+                    notes = generate_summary(raw_text, summary_mode, active_api_key, detail_level, output_lang)
 
                 total_words = len(raw_text.split())
                 summary_words = len(notes.split())
@@ -467,6 +468,7 @@ if generate_clicked:
                 st.session_state['segments'] = segments
                 st.session_state['total_words'] = total_words
                 st.session_state['time_saved'] = time_saved
+                st.session_state['selected_lang'] = output_lang
                 st.session_state['mindmap'] = None
 
                 st.success("Study assets generated successfully!")
@@ -537,7 +539,7 @@ if 'summary' in st.session_state:
                         help="Export notes as a clean printable PDF document"
                     )
                 except Exception:
-                    st.caption("PDF generation preview unavailable for this formatting.")
+                    st.caption("PDF export preview is optimized for standard character sets.")
 
         with tab_chat:
             st.subheader("💬 Ask Doubts from this Lecture")
@@ -545,7 +547,8 @@ if 'summary' in st.session_state:
             if st.button("Ask AI Assistant", help="Submit question to query lecture contents"):
                 if user_q.strip():
                     with st.spinner("Searching video content..."):
-                        ans = ask_video_question(st.session_state['raw_text'], user_q, active_api_key)
+                        cur_lang = st.session_state.get('selected_lang', 'English')
+                        ans = ask_video_question(st.session_state['raw_text'], user_q, active_api_key, cur_lang)
                         st.session_state['qa_history'].append({"q": user_q, "a": ans})
 
             for chat in reversed(st.session_state['qa_history']):
