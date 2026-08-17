@@ -78,10 +78,9 @@ DARK_CSS = """
     .metric-card:hover { transform: translateY(-2px); border-color: #818CF8 !important; }
     .metric-value { color: #818CF8 !important; font-size: 1.7rem; font-weight: 800; }
     .metric-label { color: #94A3B8 !important; font-size: 0.85rem; }
-    div[data-testid="stTextInput"] input {
+    div[data-testid="stTextInput"] input, div[data-testid="stTextArea"] textarea {
         background-color: #1E293B !important; color: #FFFFFF !important; border: 1px solid rgba(255, 255, 255, 0.18) !important; border-radius: 8px;
     }
-    div[data-testid="stTextInput"] input:focus { border-color: #818CF8 !important; box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.25) !important; }
     div[data-baseweb="select"] > div {
         background-color: #1E293B !important; color: #FFFFFF !important; border: 1px solid rgba(255, 255, 255, 0.18) !important; border-radius: 8px;
     }
@@ -125,10 +124,9 @@ LIGHT_CSS = """
     .metric-card:hover { transform: translateY(-2px); border-color: #6366F1 !important; box-shadow: 0 6px 16px rgba(99, 102, 241, 0.1); }
     .metric-value { color: #4F46E5 !important; font-size: 1.7rem; font-weight: 800; }
     .metric-label { color: #64748B !important; font-size: 0.85rem; font-weight: 500; }
-    div[data-testid="stTextInput"] input {
+    div[data-testid="stTextInput"] input, div[data-testid="stTextArea"] textarea {
         background-color: #FFFFFF !important; color: #0F172A !important; border: 1px solid #CBD5E1 !important; border-radius: 8px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03); transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
-    div[data-testid="stTextInput"] input:focus { border-color: #4F46E5 !important; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15) !important; }
     div[data-baseweb="select"] > div {
         background-color: #FFFFFF !important; color: #0F172A !important; border: 1px solid #CBD5E1 !important; border-radius: 8px; transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
@@ -205,45 +203,54 @@ url_input = st.text_input(
     placeholder="https://www.youtube.com/watch?v=aircAruvnKk"
 )
 
+with st.expander("📋 Or Paste Transcript / Lecture Text Directly (Optional Backup)"):
+    direct_transcript_text = st.text_area("Paste raw transcript or lecture notes here:", height=150)
+
 col_btn, _ = st.columns([1.5, 4])
 with col_btn:
     generate_clicked = st.button("🚀 Process & Generate", type="primary", use_container_width=True)
 
 if generate_clicked:
     target_url = st.session_state.get("url_input_box", "").strip()
-    if not target_url:
-        st.error("Please enter or select a YouTube URL.")
+    direct_text = direct_transcript_text.strip() if 'direct_transcript_text' in locals() and direct_transcript_text else ""
+    
+    if not target_url and not direct_text:
+        st.error("Please enter a YouTube URL or paste transcript text.")
     elif not active_api_key:
         st.error("GROQ_API_KEY is not configured in Streamlit Secrets. Please add your key under app Settings > Secrets.")
     else:
-        video_id = extract_video_id(target_url)
-        if not video_id:
-            st.error("Invalid YouTube URL format. Please paste a valid YouTube video link.")
-        else:
-            try:
+        raw_text = ""
+        segments = []
+        video_id = extract_video_id(target_url) if target_url else "custom_text"
+        
+        try:
+            if direct_text:
+                raw_text = direct_text
+                segments = [{"timestamp": "00:00", "text": p.strip()} for p in direct_text.split('\n') if p.strip()]
+            else:
                 with st.spinner("Extracting transcript and subtitles..."):
                     raw_text, segments = get_transcript(video_id)
 
-                with st.spinner(f"Generating {summary_mode} in {output_lang}..."):
-                    notes = generate_summary(raw_text, summary_mode, active_api_key, detail_level, output_lang)
+            with st.spinner(f"Generating {summary_mode} in {output_lang}..."):
+                notes = generate_summary(raw_text, summary_mode, active_api_key, detail_level, output_lang)
 
-                total_words = len(raw_text.split())
-                summary_words = len(notes.split())
-                read_time = max(1, round(total_words / 130))
-                time_saved = max(1, round(read_time - (summary_words / 200)))
+            total_words = len(raw_text.split())
+            summary_words = len(notes.split())
+            read_time = max(1, round(total_words / 130))
+            time_saved = max(1, round(read_time - (summary_words / 200)))
 
-                st.session_state['summary'] = notes
-                st.session_state['raw_text'] = raw_text
-                st.session_state['video_id'] = video_id
-                st.session_state['segments'] = segments
-                st.session_state['total_words'] = total_words
-                st.session_state['time_saved'] = time_saved
-                st.session_state['selected_lang'] = output_lang
-                st.session_state['mindmap'] = None
+            st.session_state['summary'] = notes
+            st.session_state['raw_text'] = raw_text
+            st.session_state['video_id'] = video_id
+            st.session_state['segments'] = segments
+            st.session_state['total_words'] = total_words
+            st.session_state['time_saved'] = time_saved
+            st.session_state['selected_lang'] = output_lang
+            st.session_state['mindmap'] = None
 
-                st.success("Study assets generated successfully!")
-            except Exception as e:
-                st.error(f"{str(e)}")
+            st.success("Study assets generated successfully!")
+        except Exception as e:
+            st.error(f"{str(e)}")
 
 if 'summary' in st.session_state:
     st.markdown("---")
@@ -352,4 +359,7 @@ if 'summary' in st.session_state:
 
     with right_col:
         st.subheader("📺 Video Player")
-        st.video(f"https://www.youtube.com/watch?v={st.session_state['video_id']}")
+        if st.session_state.get('video_id') and st.session_state['video_id'] != "custom_text":
+            st.video(f"https://www.youtube.com/watch?v={st.session_state['video_id']}")
+        else:
+            st.info("Direct text input mode active.")
