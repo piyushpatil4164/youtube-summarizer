@@ -7,6 +7,13 @@ import xml.etree.ElementTree as ET
 from youtube_transcript_api import YouTubeTranscriptApi
 
 DEMO_TRANSCRIPTS = {
+    "UrsmFxElp5k": (
+        "Operating Systems Process Synchronization and Semaphores. "
+        "The critical section problem occurs when multiple concurrent processes execute shared memory code. "
+        "A valid solution must satisfy three core conditions: Mutual Exclusion, Progress, and Bounded Waiting. "
+        "Semaphores provide an integer-based synchronization primitive using atomic wait (P) and signal (V) operations "
+        "to prevent race conditions and deadlocks."
+    ),
     "aircAruvnKk": (
         "What is a neural network? Deep learning is a branch of machine learning inspired by biological neural networks. "
         "Neurons are organized into layers: input layers take feature vectors, hidden layers compute weighted linear combinations "
@@ -84,7 +91,7 @@ def fetch_via_web_fallback(video_id: str):
 def get_transcript(video_id: str):
     """
     Automated cascading transcript extractor:
-    1. Direct native HTML parser
+    1. Native web endpoint
     2. YouTubeTranscriptApi library
     3. Demo cache fallback
     """
