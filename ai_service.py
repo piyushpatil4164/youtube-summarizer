@@ -1,58 +1,60 @@
 from groq import Groq
 
-def get_best_available_model(client: Groq) -> str:
+def call_groq_completion(client: Groq, messages: list, max_tokens: int = 1500, temperature: float = 0.3) -> str:
     """
-    Dynamically queries your Groq API account for currently active models.
-    Guarantees no 404 'model_not_found' or 'decommissioned' errors.
+    Dynamically queries your Groq account to find all active chat models.
+    Tries each available model automatically to prevent 404 or decommission errors.
     """
+    available_models = []
     try:
         models_data = client.models.list()
-        active_ids = [m.id for m in models_data.data if hasattr(m, 'id')]
-        
-        # Priority order for preferred high-performance models
-        preferred_order = [
-            "llama-3.3-70b-versatile",
-            "llama-3.1-70b-versatile",
-            "llama-3.1-8b-instant",
-            "llama3-70b-8192",
-            "llama3-8b-8192",
-            "mixtral-8x7b-32768",
-            "gemma2-9b-it"
-        ]
-        
-        for p in preferred_order:
-            if p in active_ids:
-                return p
-                
-        # Pick first available text generation model
-        for m_id in active_ids:
-            if "whisper" not in m_id.lower() and "guard" not in m_id.lower():
-                return m_id
+        for m in models_data.data:
+            m_id = getattr(m, 'id', '')
+            # Filter out non-chat models (audio transcription / vision / guard)
+            if m_id and "whisper" not in m_id.lower() and "guard" not in m_id.lower() and "distil" not in m_id.lower():
+                available_models.append(m_id)
     except Exception:
         pass
-        
-    return "llama-3.3-70b-versatile"
 
-def call_groq(client: Groq, messages: list, max_tokens: int = 1500, temperature: float = 0.3) -> str:
-    """Calls Groq using dynamic model resolution with automated fallback."""
-    selected_model = get_best_available_model(client)
-    try:
-        response = client.chat.completions.create(
-            model=selected_model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
-        return response.choices[0].message.content
-    except Exception:
-        # Fallback to standard instant endpoint
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
-        return response.choices[0].message.content
+    # Preferred models order
+    priority = [
+        "llama-3.3-70b-versatile",
+        "llama-3.1-70b-versatile",
+        "llama-3.1-8b-instant",
+        "llama3-70b-8192",
+        "llama3-8b-8192",
+        "mixtral-8x7b-32768",
+        "gemma2-9b-it"
+    ]
+    
+    # Sort available models placing highest priority first
+    ordered_models = []
+    for p in priority:
+        if p in available_models and p not in ordered_models:
+            ordered_models.append(p)
+    for m in available_models:
+        if m not in ordered_models:
+            ordered_models.append(m)
+
+    # Fallback default if API list failed
+    if not ordered_models:
+        ordered_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192"]
+
+    last_error = None
+    for model_name in ordered_models:
+        try:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            last_error = e
+            continue
+
+    raise Exception(f"Failed to generate output with available Groq models: {str(last_error)}")
 
 def chunk_text(text: str, max_chars: int = 14000) -> list[str]:
     """Splits transcript text into bounded chunks to stay within TPM limits."""
@@ -126,20 +128,22 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
 
     selected_prompt = prompts.get(mode, prompts["Detailed Study Notes"])
 
+    # Single-pass execution
     if len(chunks) == 1:
         messages = [
             {"role": "system", "content": "You are an elite academic AI assistant dedicated to high-precision study synthesis."},
             {"role": "user", "content": f"{selected_prompt}\n\n--- TRANSCRIPT ---\n{chunks[0]}"}
         ]
-        return call_groq(client, messages, max_tokens=1500, temperature=0.3)
+        return call_groq_completion(client, messages, max_tokens=1500, temperature=0.3)
 
+    # Multi-pass execution for long lectures
     intermediate_summaries = []
     for idx, c in enumerate(chunks[:3]):
         messages = [
             {"role": "system", "content": f"Summarize key academic concepts from this lecture part concisely in {language}."},
             {"role": "user", "content": f"Part {idx+1} transcript:\n{c}"}
         ]
-        part_summary = call_groq(client, messages, max_tokens=500, temperature=0.3)
+        part_summary = call_groq_completion(client, messages, max_tokens=500, temperature=0.3)
         intermediate_summaries.append(part_summary)
 
     combined_intermediate = "\n\n".join(intermediate_summaries)
@@ -147,10 +151,10 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
         {"role": "system", "content": f"Synthesize multi-part notes into a unified study guide in {language}."},
         {"role": "user", "content": f"{selected_prompt}\n\n--- COMBINED SUMMARY POINTS ---\n{combined_intermediate}"}
     ]
-    return call_groq(client, final_messages, max_tokens=1800, temperature=0.3)
+    return call_groq_completion(client, final_messages, max_tokens=1800, temperature=0.3)
 
 def ask_video_question(transcript_text: str, question: str, api_key: str, language: str = "English") -> str:
-    """Answers specific student questions using only lecture context."""
+    """Answers specific student questions using lecture context."""
     client = Groq(api_key=api_key)
     safe_transcript = transcript_text[:12000]
 
@@ -158,7 +162,7 @@ def ask_video_question(transcript_text: str, question: str, api_key: str, langua
         {"role": "system", "content": f"Answer the question accurately in {language} using ONLY the lecture content provided."},
         {"role": "user", "content": f"Lecture Excerpt:\n{safe_transcript}\n\nQuestion: {question}"}
     ]
-    return call_groq(client, messages, max_tokens=600, temperature=0.2)
+    return call_groq_completion(client, messages, max_tokens=600, temperature=0.2)
 
 def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
     """Generates Mermaid.js flowchart code."""
@@ -169,5 +173,5 @@ def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
         {"role": "system", "content": "Output ONLY valid Mermaid.js graph code starting with 'graph TD'. No markdown code blocks, backticks, or extra commentary."},
         {"role": "user", "content": f"Lecture content:\n{safe_transcript}"}
     ]
-    raw_code = call_groq(client, messages, max_tokens=500, temperature=0.2)
+    raw_code = call_groq_completion(client, messages, max_tokens=500, temperature=0.2)
     return raw_code.replace("```mermaid", "").replace("```", "").strip()
