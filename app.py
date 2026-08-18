@@ -230,8 +230,8 @@ if generate_clicked:
                 raw_text = direct_text
                 segments = [{"timestamp": "00:00", "text": p.strip()} for p in direct_text.split('\n') if p.strip()]
             else:
-                with st.spinner("Extracting transcript and subtitles..."):
-                    raw_text, segments = get_transcript(video_id)
+                with st.spinner("Transcribing lecture and subtitles via Groq AI..."):
+                    raw_text, segments = get_transcript(video_id, active_api_key)
 
             with st.spinner(f"Generating {summary_mode} in {output_lang}..."):
                 notes = generate_summary(raw_text, summary_mode, active_api_key, detail_level, output_lang)
