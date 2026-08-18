@@ -1,10 +1,10 @@
 import re
 import os
-import json
+import glob
 import html
-import urllib.request
-import xml.etree.ElementTree as ET
+import subprocess
 from youtube_transcript_api import YouTubeTranscriptApi
+from groq import Groq
 
 DEMO_TRANSCRIPTS = {
     "UrsmFxElp5k": (
@@ -33,7 +33,6 @@ DEMO_TRANSCRIPTS = {
 }
 
 def extract_video_id(url: str) -> str | None:
-    """Extracts standard 11-character YouTube video ID from any valid URL."""
     if not url:
         return None
     url = url.strip()
@@ -45,63 +44,76 @@ def extract_video_id(url: str) -> str | None:
     return None
 
 def format_timestamp(seconds: float) -> str:
-    """Converts seconds into MM:SS format."""
     minutes = int(seconds // 60)
     secs = int(seconds % 60)
     return f"{minutes:02d}:{secs:02d}"
 
-def fetch_via_web_fallback(video_id: str):
-    """Fetches transcript data directly via open YouTube timedtext API endpoints."""
-    url = f"https://www.youtube.com/watch?v={video_id}"
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Accept-Language": "en-US,en;q=0.9"
-        }
-    )
-    with urllib.request.urlopen(req, timeout=8) as resp:
-        html_page = resp.read().decode('utf-8', errors='ignore')
-
-    match = re.search(r'"captionTracks":\s*(\[.*?\])', html_page)
-    if not match:
-        raise Exception("No captions found on page.")
-
-    tracks = json.loads(match.group(1))
-    target_url = next((t["baseUrl"] for t in tracks if t.get("languageCode", "").startswith("en")), tracks[0]["baseUrl"])
-
-    cap_req = urllib.request.Request(target_url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(cap_req, timeout=8) as cap_resp:
-        xml_data = cap_resp.read().decode('utf-8', errors='ignore')
-
-    root = ET.fromstring(xml_data)
-    segments, full_text = [], []
-    for elem in root.iter('text'):
-        if elem.text:
-            text = html.unescape(elem.text).replace('\n', ' ').strip()
-            start_sec = float(elem.get('start', 0.0))
-            if text:
-                segments.append({"timestamp": format_timestamp(start_sec), "text": text})
-                full_text.append(text)
-
-    if not full_text:
-        raise Exception("Empty subtitle track.")
-    return " ".join(full_text), segments
-
-def get_transcript(video_id: str):
+def transcribe_via_whisper(video_id: str, api_key: str):
     """
-    Automated cascading transcript extractor:
-    1. Native web endpoint
-    2. YouTubeTranscriptApi library
-    3. Demo cache fallback
+    Downloads low-bitrate audio with yt-dlp and transcribes via Groq Whisper API.
+    Guarantees transcript extraction for any video without caption dependencies.
     """
-    # 1. Native web endpoint
+    audio_output_template = f"/tmp/{video_id}.%(ext)s"
+    
+    # 1. Extract audio stream using yt-dlp
+    cmd = [
+        "yt-dlp",
+        "-x",
+        "--audio-format", "mp3",
+        "--audio-quality", "9",
+        "--max-filesize", "24M",
+        "--force-overwrites",
+        "-o", audio_output_template,
+        f"https://www.youtube.com/watch?v={video_id}"
+    ]
+    
+    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+
+    # Locate generated mp3 file
+    target_files = glob.glob(f"/tmp/{video_id}.*")
+    if not target_files:
+        raise Exception("Audio extraction failed.")
+    
+    audio_path = target_files[0]
+    
     try:
-        return fetch_via_web_fallback(video_id)
-    except Exception:
-        pass
+        client = Groq(api_key=api_key)
+        with open(audio_path, "rb") as audio_file:
+            transcription = client.audio.transcriptions.create(
+                file=(os.path.basename(audio_path), audio_file.read()),
+                model="whisper-large-v3",
+                response_format="verbose_json"
+            )
+        
+        full_text = transcription.text
+        segments = []
+        
+        if hasattr(transcription, 'segments') and transcription.segments:
+            for seg in transcription.segments:
+                start_sec = float(seg.get('start', 0.0) if isinstance(seg, dict) else getattr(seg, 'start', 0.0))
+                text_seg = seg.get('text', '') if isinstance(seg, dict) else getattr(seg, 'text', '')
+                if text_seg.strip():
+                    segments.append({"timestamp": format_timestamp(start_sec), "text": text_seg.strip()})
+        else:
+            segments = [{"timestamp": "00:00", "text": full_text}]
+            
+        return full_text, segments
+    finally:
+        for f in target_files:
+            if os.path.exists(f):
+                try:
+                    os.remove(f)
+                except Exception:
+                    pass
 
-    # 2. Library call
+def get_transcript(video_id: str, api_key: str = ""):
+    """
+    Cascading Multi-Tier Extractor:
+    Tier 1: Standard YouTube timed-text track
+    Tier 2: Direct Audio Extraction + Groq Whisper AI Transcription
+    Tier 3: Pre-cached Demo Fallback
+    """
+    # Tier 1: Standard Captions API
     try:
         t_list = YouTubeTranscriptApi.list_transcripts(video_id)
         try:
@@ -122,7 +134,14 @@ def get_transcript(video_id: str):
     except Exception:
         pass
 
-    # 3. Demo fallback cache
+    # Tier 2: Whisper Audio AI Pipeline
+    if api_key:
+        try:
+            return transcribe_via_whisper(video_id, api_key)
+        except Exception:
+            pass
+
+    # Tier 3: Demo Cache Fallback
     if video_id in DEMO_TRANSCRIPTS:
         fallback_text = DEMO_TRANSCRIPTS[video_id]
         segments = [
@@ -132,4 +151,4 @@ def get_transcript(video_id: str):
         ]
         return fallback_text, segments
 
-    raise Exception(f"This video (ID: {video_id}) either has closed captions disabled on YouTube or blocked automated extraction. Use the 'Direct Text / Transcript Input' box to paste the lecture text.")
+    raise Exception(f"Unable to extract audio or captions for video {video_id}. Please use the Direct Text Input box.")
