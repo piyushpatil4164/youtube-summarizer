@@ -1,67 +1,7 @@
-from groq import Groq
+import os
+import re
 import json
-
-def generate_interactive_quiz_data(transcript_text: str, api_key: str) -> dict:
-    """Generates structured JSON data for interactive MCQs and Flashcards."""
-    client = Groq(api_key=api_key)
-    safe_transcript = transcript_text[:12000]
-
-    system_prompt = (
-        "You are an expert assessment designer. Generate an interactive revision deck from the lecture content.\n"
-        "Return ONLY a valid JSON object with NO extra text, no markdown backticks, and no explanation.\n\n"
-        "Strict JSON schema format:\n"
-        "{\n"
-        '  "quiz": [\n'
-        '    {\n'
-        '      "question": "Question text",\n'
-        '      "options": ["Option A", "Option B", "Option C", "Option D"],\n'
-        '      "correct_answer": "Option A",\n'
-        '      "explanation": "Brief explanation of why this answer is correct."\n'
-        '    }\n'
-        '  ],\n'
-        '  "flashcards": [\n'
-        '    {\n'
-        '      "front": "Key Term / Concept",\n'
-        '      "back": "Clear definition and academic importance."\n'
-        '    }\n'
-        '  ]\n'
-        "}\n"
-        "Generate exactly 4 high-yield MCQs and 4 Flashcards."
-    )
-
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Lecture Text:\n{safe_transcript}"}
-    ]
-
-    raw_response = call_groq_completion(client, messages, max_tokens=1400, temperature=0.2)
-    cleaned_json = raw_response.replace("```json", "").replace("```", "").strip()
-
-    try:
-        return json.loads(cleaned_json)
-    except Exception:
-        # Robust fallback in case of formatting anomalies
-        return {
-            "quiz": [
-                {
-                    "question": "What is the primary role of the topics covered in this lecture?",
-                    "options": [
-                        "Optimizing system architecture and state flow",
-                        "Manual data storage operations",
-                        "Eliminating compute infrastructure",
-                        "Replacing software algorithms"
-                    ],
-                    "correct_answer": "Optimizing system architecture and state flow",
-                    "explanation": "The lecture focuses on foundational system structures and core computational workflows."
-                }
-            ],
-            "flashcards": [
-                {
-                    "front": "Primary Architectural Focus",
-                    "back": "Covers high-level design principles, execution efficiency, and fundamental definitions."
-                }
-            ]
-        }
+from groq import Groq
 
 def call_groq_completion(client: Groq, messages: list, max_tokens: int = 1500, temperature: float = 0.3) -> str:
     """
@@ -73,13 +13,11 @@ def call_groq_completion(client: Groq, messages: list, max_tokens: int = 1500, t
         models_data = client.models.list()
         for m in models_data.data:
             m_id = getattr(m, 'id', '')
-            # Filter out non-chat models (audio transcription / vision / guard)
             if m_id and "whisper" not in m_id.lower() and "guard" not in m_id.lower() and "distil" not in m_id.lower():
                 available_models.append(m_id)
     except Exception:
         pass
 
-    # Preferred models order
     priority = [
         "llama-3.3-70b-versatile",
         "llama-3.1-70b-versatile",
@@ -90,7 +28,6 @@ def call_groq_completion(client: Groq, messages: list, max_tokens: int = 1500, t
         "gemma2-9b-it"
     ]
     
-    # Sort available models placing highest priority first
     ordered_models = []
     for p in priority:
         if p in available_models and p not in ordered_models:
@@ -99,7 +36,6 @@ def call_groq_completion(client: Groq, messages: list, max_tokens: int = 1500, t
         if m not in ordered_models:
             ordered_models.append(m)
 
-    # Fallback default if API list failed
     if not ordered_models:
         ordered_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192"]
 
@@ -191,7 +127,6 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
 
     selected_prompt = prompts.get(mode, prompts["Detailed Study Notes"])
 
-    # Single-pass execution
     if len(chunks) == 1:
         messages = [
             {"role": "system", "content": "You are an elite academic AI assistant dedicated to high-precision study synthesis."},
@@ -199,7 +134,6 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
         ]
         return call_groq_completion(client, messages, max_tokens=1500, temperature=0.3)
 
-    # Multi-pass execution for long lectures
     intermediate_summaries = []
     for idx, c in enumerate(chunks[:3]):
         messages = [
@@ -215,17 +149,6 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
         {"role": "user", "content": f"{selected_prompt}\n\n--- COMBINED SUMMARY POINTS ---\n{combined_intermediate}"}
     ]
     return call_groq_completion(client, final_messages, max_tokens=1800, temperature=0.3)
-
-def ask_video_question(transcript_text: str, question: str, api_key: str, language: str = "English") -> str:
-    """Answers specific student questions using lecture context."""
-    client = Groq(api_key=api_key)
-    safe_transcript = transcript_text[:12000]
-
-    messages = [
-        {"role": "system", "content": f"Answer the question accurately in {language} using ONLY the lecture content provided."},
-        {"role": "user", "content": f"Lecture Excerpt:\n{safe_transcript}\n\nQuestion: {question}"}
-    ]
-    return call_groq_completion(client, messages, max_tokens=600, temperature=0.2)
 
 def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
     """Generates clean, sanitized Mermaid.js flowchart code."""
@@ -248,11 +171,52 @@ def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
     ]
     raw_code = call_groq_completion(client, messages, max_tokens=500, temperature=0.1)
     
-    # Sanitize output: remove code fences, leading/trailing spaces
     clean = re.sub(r'```(?:mermaid)?', '', raw_code).replace('```', '').strip()
-    
-    # Ensure it starts with graph TD
     if not clean.startswith("graph"):
         clean = "graph TD\n" + clean
 
     return clean
+
+def generate_interactive_quiz(transcript_text: str, api_key: str, language: str = "English") -> dict:
+    """Generates structured MCQs and Flashcards in pure JSON format."""
+    client = Groq(api_key=api_key)
+    safe_transcript = transcript_text[:12000]
+
+    system_prompt = (
+        "You are an expert exam creator. Generate an interactive quiz and flashcard deck from the lecture.\n"
+        f"Language: {language}\n"
+        "Return ONLY a valid, raw JSON object (no markdown, no ```json codeblocks) with this exact schema:\n"
+        "{\n"
+        '  "quiz": [\n'
+        '    {\n'
+        '      "question": "Question text here?",\n'
+        '      "options": ["Option A", "Option B", "Option C", "Option D"],\n'
+        '      "correct_index": 0,\n'
+        '      "explanation": "Why this option is correct."\n'
+        '    }\n'
+        '  ],\n'
+        '  "flashcards": [\n'
+        '    {\n'
+        '      "front": "Key Term / Concept",\n'
+        '      "back": "Detailed concise explanation/definition"\n'
+        '    }\n'
+        '  ]\n'
+        "}\n"
+        "Provide exactly 5 high-yield MCQs and 5 flashcards."
+    )
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"Lecture Transcript:\n{safe_transcript}"}
+    ]
+
+    raw_response = call_groq_completion(client, messages, max_tokens=1500, temperature=0.2)
+    clean_json = raw_response.replace("```json", "").replace("```", "").strip()
+
+    try:
+        return json.loads(clean_json)
+    except Exception:
+        match = re.search(r"\{.*\}", clean_json, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+        return {"quiz": [], "flashcards": []}
