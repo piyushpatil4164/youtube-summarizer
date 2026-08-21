@@ -228,13 +228,31 @@ def ask_video_question(transcript_text: str, question: str, api_key: str, langua
     return call_groq_completion(client, messages, max_tokens=600, temperature=0.2)
 
 def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
-    """Generates Mermaid.js flowchart code."""
+    """Generates clean, sanitized Mermaid.js flowchart code."""
     client = Groq(api_key=api_key)
     safe_transcript = transcript_text[:8000]
 
+    system_prompt = (
+        "You are an expert flowchart creator. Convert the lecture into a clean, valid Mermaid.js graph.\n"
+        "RULES:\n"
+        "1. Start strictly with 'graph TD'\n"
+        "2. Node IDs must be simple alphanumeric strings without spaces (e.g., A, B1, C2)\n"
+        "3. Always wrap node text inside square brackets and double quotes, like: A[\"Core Topic\"] --> B[\"Sub Concept\"]\n"
+        "4. Do NOT use special characters like colons, parentheses, or single quotes inside node labels\n"
+        "5. Output ONLY raw Mermaid syntax. Do not wrap in markdown code blocks, backticks, or write explanations."
+    )
+
     messages = [
-        {"role": "system", "content": "Output ONLY valid Mermaid.js graph code starting with 'graph TD'. No markdown code blocks, backticks, or extra commentary."},
-        {"role": "user", "content": f"Lecture content:\n{safe_transcript}"}
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"Lecture excerpt:\n{safe_transcript}"}
     ]
-    raw_code = call_groq_completion(client, messages, max_tokens=500, temperature=0.2)
-    return raw_code.replace("```mermaid", "").replace("```", "").strip()
+    raw_code = call_groq_completion(client, messages, max_tokens=500, temperature=0.1)
+    
+    # Sanitize output: remove code fences, leading/trailing spaces
+    clean = re.sub(r'```(?:mermaid)?', '', raw_code).replace('```', '').strip()
+    
+    # Ensure it starts with graph TD
+    if not clean.startswith("graph"):
+        clean = "graph TD\n" + clean
+
+    return clean
