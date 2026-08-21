@@ -3,7 +3,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 from dotenv import load_dotenv
 from transcript_service import extract_video_id, get_transcript
-from ai_service import generate_summary, ask_video_question, generate_mindmap_code, generate_interactive_quiz_data
+from ai_service import generate_summary, generate_mindmap_code, generate_interactive_quiz
 from pdf_service import create_pdf
 
 load_dotenv()
@@ -28,21 +28,20 @@ def resolve_api_key() -> str:
 
 active_api_key = resolve_api_key()
 
-# Session State Initializations
 if "theme_mode" not in st.session_state:
     st.session_state["theme_mode"] = "Dark"
-if "qa_history" not in st.session_state:
-    st.session_state["qa_history"] = []
 if "url_input_box" not in st.session_state:
     st.session_state["url_input_box"] = ""
-if "flashcard_idx" not in st.session_state:
-    st.session_state["flashcard_idx"] = 0
-if "show_card_answer" not in st.session_state:
-    st.session_state["show_card_answer"] = False
+if "quiz_data" not in st.session_state:
+    st.session_state["quiz_data"] = None
+if "user_answers" not in st.session_state:
+    st.session_state["user_answers"] = {}
 if "quiz_submitted" not in st.session_state:
     st.session_state["quiz_submitted"] = False
-if "interactive_study_data" not in st.session_state:
-    st.session_state["interactive_study_data"] = None
+if "card_index" not in st.session_state:
+    st.session_state["card_index"] = 0
+if "show_card_back" not in st.session_state:
+    st.session_state["show_card_back"] = False
 
 def set_url(url: str):
     st.session_state["url_input_box"] = url
@@ -87,11 +86,6 @@ DARK_CSS = """
     .metric-card:hover { transform: translateY(-2px); border-color: #818CF8 !important; }
     .metric-value { color: #818CF8 !important; font-size: 1.7rem; font-weight: 800; }
     .metric-label { color: #94A3B8 !important; font-size: 0.85rem; }
-    .flashcard-box {
-        background: #1E293B; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 14px;
-        padding: 2.2rem; min-height: 180px; display: flex; flex-direction: column; justify-content: center;
-        align-items: center; text-align: center; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); margin-bottom: 1rem;
-    }
     div[data-testid="stTextInput"] input, div[data-testid="stTextArea"] textarea {
         background-color: #1E293B !important; color: #FFFFFF !important; border: 1px solid rgba(255, 255, 255, 0.18) !important; border-radius: 8px;
     }
@@ -125,10 +119,13 @@ LIGHT_CSS = """
     header[data-testid="stHeader"] button, header[data-testid="stHeader"] a, header[data-testid="stHeader"] svg, div[data-testid="stToolbar"] svg, div[data-testid="stToolbar"] button {
         color: #0F172A !important; fill: #0F172A !important; stroke: #0F172A !important; opacity: 0.95 !important;
     }
+    header[data-testid="stHeader"] button:hover svg, header[data-testid="stHeader"] a:hover svg { fill: #4F46E5 !important; stroke: #4F46E5 !important; }
     h1, h2, h3, h4, h5, h6, p, span, label, div, .stMarkdown { color: #0F172A !important; }
     .hero-container {
         background: linear-gradient(135deg, #FFFFFF 0%, #EEF2FF 100%) !important; border: 1px solid #C7D2FE !important; border-radius: 16px; padding: 2.2rem 2rem; text-align: center; margin-bottom: 1.5rem; box-shadow: 0 4px 20px rgba(99, 102, 241, 0.08);
     }
+    .hero-container h1 { color: #1E1B4B !important; }
+    .hero-container p { color: #475569 !important; }
     .badge { background: #EEF2FF !important; color: #4F46E5 !important; border: 1px solid #C7D2FE !important; }
     .metric-card {
         background: #FFFFFF !important; border: 1px solid #E2E8F0 !important; border-radius: 12px; padding: 1.2rem; text-align: center; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03); transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
@@ -136,29 +133,30 @@ LIGHT_CSS = """
     .metric-card:hover { transform: translateY(-2px); border-color: #6366F1 !important; box-shadow: 0 6px 16px rgba(99, 102, 241, 0.1); }
     .metric-value { color: #4F46E5 !important; font-size: 1.7rem; font-weight: 800; }
     .metric-label { color: #64748B !important; font-size: 0.85rem; font-weight: 500; }
-    .flashcard-box {
-        background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 14px;
-        padding: 2.2rem; min-height: 180px; display: flex; flex-direction: column; justify-content: center;
-        align-items: center; text-align: center; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); margin-bottom: 1rem;
-    }
     div[data-testid="stTextInput"] input, div[data-testid="stTextArea"] textarea {
-        background-color: #FFFFFF !important; color: #0F172A !important; border: 1px solid #CBD5E1 !important; border-radius: 8px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+        background-color: #FFFFFF !important; color: #0F172A !important; border: 1px solid #CBD5E1 !important; border-radius: 8px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03); transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
     div[data-testid="stTextInput"] input:focus, div[data-testid="stTextArea"] textarea:focus { border-color: #4F46E5 !important; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15) !important; }
     div[data-baseweb="select"] > div {
-        background-color: #FFFFFF !important; color: #0F172A !important; border: 1px solid #CBD5E1 !important; border-radius: 8px;
+        background-color: #FFFFFF !important; color: #0F172A !important; border: 1px solid #CBD5E1 !important; border-radius: 8px; transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
+    div[data-baseweb="select"] > div:hover { border-color: #6366F1 !important; }
     div[data-baseweb="select"] * { color: #0F172A !important; fill: #0F172A !important; }
+    ul[data-baseweb="menu"] { background-color: #FFFFFF !important; border: 1px solid #E2E8F0 !important; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08) !important; }
+    ul[data-baseweb="menu"] li { color: #0F172A !important; transition: background-color 0.15s ease; }
+    ul[data-baseweb="menu"] li:hover { background-color: #EEF2FF !important; color: #4F46E5 !important; }
     button[kind="secondary"] {
-        background-color: #FFFFFF !important; color: #1E293B !important; border: 1px solid #CBD5E1 !important; border-radius: 8px; transition: all 0.2s ease-in-out !important;
+        background-color: #FFFFFF !important; color: #1E293B !important; border: 1px solid #CBD5E1 !important; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important; border-radius: 8px; transition: all 0.2s ease-in-out !important;
     }
     button[kind="secondary"]:hover {
-        background-color: #EEF2FF !important; border-color: #6366F1 !important; color: #4F46E5 !important; transform: translateY(-2px) !important;
+        background-color: #EEF2FF !important; border-color: #6366F1 !important; color: #4F46E5 !important; transform: translateY(-2px) !important; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.12) !important;
     }
     button[kind="primary"] {
-        background: linear-gradient(90deg, #4F46E5, #4338CA) !important; color: #FFFFFF !important; border: none !important; border-radius: 8px; box-shadow: 0 4px 14px rgba(79, 70, 229, 0.3) !important;
+        background: linear-gradient(90deg, #4F46E5, #4338CA) !important; color: #FFFFFF !important; border: none !important; border-radius: 8px; box-shadow: 0 4px 14px rgba(79, 70, 229, 0.3) !important; transition: all 0.2s ease-in-out !important;
     }
-    button[kind="primary"]:hover { background: linear-gradient(90deg, #4338CA, #3730A3) !important; transform: translateY(-2px) !important; }
+    button[kind="primary"]:hover {
+        background: linear-gradient(90deg, #4338CA, #3730A3) !important; transform: translateY(-2px) !important; box-shadow: 0 6px 20px rgba(79, 70, 229, 0.45) !important;
+    }
 </style>
 """
 
@@ -240,7 +238,7 @@ if generate_clicked:
                 raw_text = direct_text
                 segments = [{"timestamp": "00:00", "text": p.strip()} for p in direct_text.split('\n') if p.strip()]
             else:
-                with st.spinner("Extracting lecture content..."):
+                with st.spinner("Transcribing lecture and subtitles via Groq AI..."):
                     raw_text, segments = get_transcript(video_id, active_api_key)
 
             with st.spinner(f"Generating {summary_mode} in {output_lang}..."):
@@ -259,10 +257,11 @@ if generate_clicked:
             st.session_state['time_saved'] = time_saved
             st.session_state['selected_lang'] = output_lang
             st.session_state['mindmap'] = None
-            st.session_state['interactive_study_data'] = None
+            st.session_state['quiz_data'] = None
+            st.session_state['user_answers'] = {}
             st.session_state['quiz_submitted'] = False
-            st.session_state['flashcard_idx'] = 0
-            st.session_state['show_card_answer'] = False
+            st.session_state['card_index'] = 0
+            st.session_state['show_card_back'] = False
 
             st.success("Study assets generated successfully!")
         except Exception as e:
@@ -297,10 +296,9 @@ if 'summary' in st.session_state:
     left_col, right_col = st.columns([3, 2], gap="large")
 
     with left_col:
-        tab_notes, tab_quiz, tab_chat, tab_mindmap, tab_transcript = st.tabs([
+        tab_notes, tab_quiz, tab_mindmap, tab_transcript = st.tabs([
             "📝 AI Notes",
-            "🎯 Interactive Quiz",
-            "💬 Chat with Video", 
+            "🎯 Interactive Quiz & Flashcards",
             "🗺️ Concept Mind Map", 
             "📜 Searchable Subtitles"
         ])
@@ -331,102 +329,115 @@ if 'summary' in st.session_state:
                     st.caption("PDF export preview is optimized for standard character sets.")
 
         with tab_quiz:
-            st.subheader("🎯 Interactive Knowledge Check & Revision Deck")
+            st.subheader("🎯 Test Your Understanding")
             
-            if st.session_state.get("interactive_study_data") is None:
-                if st.button("⚡ Generate Interactive MCQ & Flashcards Deck", type="primary"):
-                    with st.spinner("Analyzing lecture to construct questions..."):
-                        quiz_data = generate_interactive_quiz_data(st.session_state['raw_text'], active_api_key)
-                        st.session_state["interactive_study_data"] = quiz_data
+            if not st.session_state.get("quiz_data"):
+                if st.button("⚡ Generate Practice Quiz & Flashcards", use_container_width=True):
+                    with st.spinner("Creating exam questions and flashcards via Groq AI..."):
+                        cur_lang = st.session_state.get('selected_lang', 'English')
+                        quiz_res = generate_interactive_quiz(st.session_state['raw_text'], active_api_key, cur_lang)
+                        st.session_state["quiz_data"] = quiz_res
+                        st.session_state["user_answers"] = {}
+                        st.session_state["quiz_submitted"] = False
+                        st.session_state["card_index"] = 0
+                        st.session_state["show_card_back"] = False
                         st.rerun()
-            else:
-                study_data = st.session_state["interactive_study_data"]
-                quiz_items = study_data.get("quiz", [])
-                flashcard_items = study_data.get("flashcards", [])
 
-                subtab_mcq, subtab_cards = st.tabs(["🧠 Multiple Choice Quiz", "🗂️ Interactive Flashcards"])
+            quiz_payload = st.session_state.get("quiz_data")
+            if quiz_payload and quiz_payload.get("quiz"):
+                q_tab, f_tab = st.tabs(["📝 Multiple Choice Quiz", "🗂️ Interactive Flashcards"])
 
-                with subtab_mcq:
-                    user_answers = {}
-                    for idx, q_item in enumerate(quiz_items):
-                        st.markdown(f"**Q{idx + 1}: {q_item.get('question')}**")
-                        opts = q_item.get("options", [])
-                        user_answers[idx] = st.radio(
-                            f"Select an answer for Q{idx + 1}:",
-                            opts,
+                # --- MCQ QUIZ SECTION ---
+                with q_tab:
+                    mcq_list = quiz_payload.get("quiz", [])
+                    total_questions = len(mcq_list)
+
+                    for idx, q in enumerate(mcq_list):
+                        st.markdown(f"**Q{idx+1}: {q['question']}**")
+                        selected = st.radio(
+                            f"Select answer for Q{idx+1}:",
+                            options=q["options"],
+                            index=None if idx not in st.session_state["user_answers"] else q["options"].index(st.session_state["user_answers"][idx]),
                             key=f"mcq_radio_{idx}",
-                            label_visibility="collapsed"
+                            label_visibility="collapsed",
+                            disabled=st.session_state["quiz_submitted"]
                         )
+                        if selected:
+                            st.session_state["user_answers"][idx] = selected
+
+                        if st.session_state["quiz_submitted"]:
+                            correct_opt = q["options"][q["correct_index"]]
+                            user_choice = st.session_state["user_answers"].get(idx)
+                            if user_choice == correct_opt:
+                                st.success(f"✅ Correct! — {q.get('explanation', '')}")
+                            else:
+                                st.error(f"❌ Incorrect. Correct Answer: **{correct_opt}**\n\n*{q.get('explanation', '')}*")
                         st.markdown("<br>", unsafe_allow_html=True)
 
-                    c_submit, _ = st.columns([2, 3])
-                    with c_submit:
-                        if st.button("Submit Quiz Answers", type="primary", use_container_width=True):
-                            st.session_state["quiz_submitted"] = True
+                    btn_c1, btn_c2 = st.columns([2, 2])
+                    with btn_c1:
+                        if not st.session_state["quiz_submitted"]:
+                            if st.button("📊 Submit Quiz", type="primary", use_container_width=True):
+                                st.session_state["quiz_submitted"] = True
+                                st.rerun()
+                        else:
+                            if st.button("🔄 Retake Quiz", use_container_width=True):
+                                st.session_state["user_answers"] = {}
+                                st.session_state["quiz_submitted"] = False
+                                st.rerun()
 
-                    if st.session_state.get("quiz_submitted"):
-                        st.markdown("---")
+                    if st.session_state["quiz_submitted"]:
                         score = 0
-                        for idx, q_item in enumerate(quiz_items):
-                            correct_ans = q_item.get("correct_answer")
-                            chosen_ans = user_answers.get(idx)
-                            is_correct = chosen_ans == correct_ans
-                            if is_correct:
+                        for idx, q in enumerate(mcq_list):
+                            if st.session_state["user_answers"].get(idx) == q["options"][q["correct_index"]]:
                                 score += 1
-                                st.success(f"**Q{idx + 1}: Correct!** ✅ — {chosen_ans}")
-                            else:
-                                st.error(f"**Q{idx + 1}: Incorrect.** ❌ (Your choice: {chosen_ans}) | **Correct Answer:** {correct_ans}")
-                            st.info(f"💡 *Explanation:* {q_item.get('explanation')}")
-
-                        st.markdown(f"### 🏆 Final Score: `{score} / {len(quiz_items)}` ({int((score/len(quiz_items))*100)}%)")
-
-                with subtab_cards:
-                    if flashcard_items:
-                        curr_card_idx = st.session_state["flashcard_idx"] % len(flashcard_items)
-                        curr_card = flashcard_items[curr_card_idx]
-
-                        st.caption(f"Card {curr_card_idx + 1} of {len(flashcard_items)}")
-                        
-                        card_content = curr_card.get("back") if st.session_state["show_card_answer"] else curr_card.get("front")
-                        card_label = "💡 Answer / Definition" if st.session_state["show_card_answer"] else "📌 Concept / Term"
-
+                        pct = int((score / total_questions) * 100)
+                        st.markdown("---")
                         st.markdown(f"""
-                        <div class="flashcard-box">
-                            <span style="font-size: 0.85rem; font-weight: 700; color: #818CF8; margin-bottom: 0.5rem;">{card_label}</span>
-                            <div style="font-size: 1.15rem; font-weight: 600;">{card_content}</div>
+                        <div class="metric-card" style="margin-top: 1rem;">
+                            <div class="metric-value">{score} / {total_questions} ({pct}%)</div>
+                            <div class="metric-label">Your Quiz Score</div>
                         </div>
                         """, unsafe_allow_html=True)
 
-                        fc_col1, fc_col2, fc_col3 = st.columns([1.5, 2, 1.5])
-                        with fc_col1:
-                            if st.button("⬅️ Previous Card", use_container_width=True):
-                                st.session_state["flashcard_idx"] = (st.session_state["flashcard_idx"] - 1) % len(flashcard_items)
-                                st.session_state["show_card_answer"] = False
-                                st.rerun()
-                        with fc_col2:
-                            toggle_text = "🙈 Hide Answer" if st.session_state["show_card_answer"] else "🔄 Flip / Reveal Answer"
-                            if st.button(toggle_text, use_container_width=True):
-                                st.session_state["show_card_answer"] = not st.session_state["show_card_answer"]
-                                st.rerun()
-                        with fc_col3:
-                            if st.button("Next Card ➡️", use_container_width=True):
-                                st.session_state["flashcard_idx"] = (st.session_state["flashcard_idx"] + 1) % len(flashcard_items)
-                                st.session_state["show_card_answer"] = False
-                                st.rerun()
+                # --- FLASHCARDS SECTION ---
+                with f_tab:
+                    cards = quiz_payload.get("flashcards", [])
+                    if cards:
+                        curr_i = st.session_state["card_index"]
+                        current_card = cards[curr_i]
+                        
+                        st.caption(f"Card {curr_i + 1} of {len(cards)}")
+                        
+                        card_bg = "#1E293B" if is_dark else "#F1F5F9"
+                        card_border = "#6366F1" if is_dark else "#4F46E5"
+                        card_text = current_card["back"] if st.session_state["show_card_back"] else current_card["front"]
+                        card_label = "💡 DEFINITION / ANSWER" if st.session_state["show_card_back"] else "📌 CONCEPT / TERM"
 
-        with tab_chat:
-            st.subheader("💬 Ask Doubts from this Lecture")
-            user_q = st.text_input("Ask a question:", placeholder="e.g., Explain the algorithm mentioned in the beginning", key="chat_input_field")
-            if st.button("Ask AI Assistant"):
-                if user_q.strip():
-                    with st.spinner("Searching video content..."):
-                        cur_lang = st.session_state.get('selected_lang', 'English')
-                        ans = ask_video_question(st.session_state['raw_text'], user_q, active_api_key, cur_lang)
-                        st.session_state['qa_history'].append({"q": user_q, "a": ans})
+                        st.markdown(f"""
+                        <div style="background-color: {card_bg}; border: 2px solid {card_border}; border-radius: 12px; padding: 2.5rem; text-align: center; min-height: 160px; display: flex; flex-direction: column; justify-content: center;">
+                            <div style="font-size: 0.8rem; font-weight: 700; color: #818CF8; margin-bottom: 0.5rem;">{card_label}</div>
+                            <div style="font-size: 1.25rem; font-weight: 600;">{card_text}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        st.markdown("<br>", unsafe_allow_html=True)
 
-            for chat in reversed(st.session_state['qa_history']):
-                st.markdown(f"**Q:** {chat['q']}")
-                st.info(f"**A:** {chat['a']}")
+                        fc_c1, fc_c2, fc_c3 = st.columns([1, 2, 1])
+                        with fc_c1:
+                            if st.button("⬅️ Prev", disabled=(curr_i == 0), use_container_width=True):
+                                st.session_state["card_index"] -= 1
+                                st.session_state["show_card_back"] = False
+                                st.rerun()
+                        with fc_c2:
+                            flip_text = "🔄 Reveal Term (Front)" if st.session_state["show_card_back"] else "🔄 Flip Card (Reveal Answer)"
+                            if st.button(flip_text, use_container_width=True):
+                                st.session_state["show_card_back"] = not st.session_state["show_card_back"]
+                                st.rerun()
+                        with fc_c3:
+                            if st.button("Next ➡️", disabled=(curr_i == len(cards) - 1), use_container_width=True):
+                                st.session_state["card_index"] += 1
+                                st.session_state["show_card_back"] = False
+                                st.rerun()
 
         with tab_mindmap:
             st.subheader("🗺️ Hierarchical Mind Map")
@@ -442,10 +453,14 @@ if 'summary' in st.session_state:
                 </div>
                 <script type="module">
                     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-                    mermaid.initialize({{ startOnLoad: true, theme: '{"dark" if is_dark else "default"}' }});
+                    mermaid.initialize({{
+                        startOnLoad: true,
+                        theme: '{"dark" if is_dark else "default"}',
+                        securityLevel: 'loose'
+                    }});
                 </script>
                 """
-                components.html(mermaid_html, height=450, scrolling=True)
+                components.html(mermaid_html, height=480, scrolling=True)
 
         with tab_transcript:
             st.subheader("📜 Searchable Subtitles")
