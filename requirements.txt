@@ -1,7 +1,6 @@
 streamlit
 groq
 youtube-transcript-api
-yt-dlp
 requests
 fpdf2
 python-dotenv
