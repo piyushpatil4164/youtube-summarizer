@@ -4,10 +4,6 @@ import json
 from groq import Groq
 
 def call_groq_completion(client: Groq, messages: list, max_tokens: int = 1500, temperature: float = 0.3) -> str:
-    """
-    Dynamically queries your Groq account to find all active chat models.
-    Tries each available model automatically to prevent 404 or decommission errors.
-    """
     available_models = []
     try:
         models_data = client.models.list()
@@ -56,7 +52,6 @@ def call_groq_completion(client: Groq, messages: list, max_tokens: int = 1500, t
     raise Exception(f"Failed to generate output with available Groq models: {str(last_error)}")
 
 def chunk_text(text: str, max_chars: int = 14000) -> list[str]:
-    """Splits transcript text into bounded chunks to stay within TPM limits."""
     words = text.split()
     chunks = []
     current_chunk = []
@@ -76,7 +71,6 @@ def chunk_text(text: str, max_chars: int = 14000) -> list[str]:
     return chunks if chunks else [text]
 
 def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "Standard", language: str = "English") -> str:
-    """Generates structured notes in the selected language."""
     client = Groq(api_key=api_key)
     chunks = chunk_text(text, max_chars=13000)
     
@@ -151,9 +145,6 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
     return call_groq_completion(client, final_messages, max_tokens=1800, temperature=0.3)
 
 def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
-    """
-    Generates a structured concept hierarchy and compiles it into guaranteed valid Mermaid syntax.
-    """
     client = Groq(api_key=api_key)
     safe_transcript = transcript_text[:8000]
 
@@ -165,9 +156,7 @@ def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
         '[\n'
         '  {"from": "Neural Networks", "to": "Input Layer"},\n'
         '  {"from": "Neural Networks", "to": "Hidden Layers"},\n'
-        '  {"from": "Hidden Layers", "to": "Activation Functions"},\n'
-        '  {"from": "Neural Networks", "to": "Training Process"},\n'
-        '  {"from": "Training Process", "to": "Backpropagation"}\n'
+        '  {"from": "Hidden Layers", "to": "Activation Functions"}\n'
         ']'
     )
 
@@ -183,15 +172,8 @@ def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
         data = json.loads(clean_json)
     except Exception:
         match = re.search(r"\[.*\]", clean_json, re.DOTALL)
-        if match:
-            try:
-                data = json.loads(match.group(0))
-            except Exception:
-                data = []
-        else:
-            data = []
+        data = json.loads(match.group(0)) if match else []
 
-    # Safe fallback if extraction produces no edges
     if not data or not isinstance(data, list):
         data = [
             {"from": "Core Lecture Topic", "to": "Key Concepts"},
@@ -200,7 +182,6 @@ def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
             {"from": "Theoretical Foundation", "to": "Practical Applications"}
         ]
 
-    # Deterministically construct 100% valid Mermaid diagram code
     node_map = {}
     lines = ["graph TD"]
     node_counter = 1
@@ -226,7 +207,6 @@ def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
     return "\n".join(lines)
 
 def generate_interactive_quiz(transcript_text: str, api_key: str, language: str = "English") -> dict:
-    """Generates structured MCQs and Flashcards in pure JSON format."""
     client = Groq(api_key=api_key)
     safe_transcript = transcript_text[:12000]
 
