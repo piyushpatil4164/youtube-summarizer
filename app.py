@@ -9,24 +9,25 @@ from pdf_service import create_pdf
 load_dotenv()
 
 st.set_page_config(
-    page_title="LectureDigest AI — Smart Study Assistant",
+    page_title="PiFI Yt summarizer",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-def resolve_api_key() -> str:
+def get_secret(key_name: str) -> str:
     key = None
     try:
-        if "GROQ_API_KEY" in st.secrets:
-            key = st.secrets["GROQ_API_KEY"]
+        if key_name in st.secrets:
+            key = st.secrets[key_name]
     except Exception:
         pass
     if not key:
-        key = os.getenv("GROQ_API_KEY", "")
-    return key.strip() if key else ""
+        key = os.getenv(key_name, "")
+    return str(key).strip() if key else ""
 
-active_api_key = resolve_api_key()
+active_api_key = get_secret("GROQ_API_KEY")
+supadata_api_key = get_secret("SUPADATA_API_KEY")
 
 if "theme_mode" not in st.session_state:
     st.session_state["theme_mode"] = "Dark"
@@ -64,7 +65,7 @@ is_dark = st.session_state["theme_mode"] == "Dark"
 
 DARK_CSS = """
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    @import url('[https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap](https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap)');
     * { font-family: 'Plus Jakarta Sans', sans-serif; }
     .stApp { background-color: #0B0F19 !important; color: #F8FAFC !important; }
     section[data-testid="stSidebar"] { background-color: #111827 !important; border-right: 1px solid rgba(255, 255, 255, 0.08) !important; }
@@ -111,7 +112,7 @@ DARK_CSS = """
 
 LIGHT_CSS = """
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    @import url('[https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap](https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap)');
     * { font-family: 'Plus Jakarta Sans', sans-serif; }
     .stApp { background-color: #F8FAFC !important; color: #0F172A !important; }
     section[data-testid="stSidebar"] { background-color: #FFFFFF !important; border-right: 1px solid #E2E8F0 !important; box-shadow: 2px 0 10px rgba(0, 0, 0, 0.02) !important; }
@@ -192,7 +193,7 @@ with st.sidebar:
 st.markdown("""
 <div class="hero-container">
     <div class="badge">⚡ Groq LPU Accelerated</div>
-    <h1 style="margin: 0.2rem 0; font-weight: 800; font-size: 2.3rem;">AI YouTube Lecture Digest</h1>
+    <h1 style="margin: 0.2rem 0; font-weight: 800; font-size: 2.3rem;">PiFI Yt summarizer</h1>
     <p style="margin: 0; font-size: 0.95rem;">Convert video lectures into structured notes, mind maps, quizzes, and searchable subtitles.</p>
 </div>
 """, unsafe_allow_html=True)
@@ -201,16 +202,16 @@ col_lbl, c1, c2, c3 = st.columns([1.5, 2, 2, 2])
 with col_lbl:
     st.markdown("**Sample Lectures:**")
 with c1:
-    st.button("🧠 Neural Networks", use_container_width=True, on_click=set_url, args=("https://www.youtube.com/watch?v=aircAruvnKk",))
+    st.button("🧠 Neural Networks", use_container_width=True, on_click=set_url, args=("[https://www.youtube.com/watch?v=aircAruvnKk](https://www.youtube.com/watch?v=aircAruvnKk)",))
 with c2:
-    st.button("🐍 Python in 100s", use_container_width=True, on_click=set_url, args=("https://www.youtube.com/watch?v=dhgEAm8384U",))
+    st.button("🐍 Python in 100s", use_container_width=True, on_click=set_url, args=("[https://www.youtube.com/watch?v=dhgEAm8384U](https://www.youtube.com/watch?v=dhgEAm8384U)",))
 with c3:
-    st.button("🌐 Operating Systems", use_container_width=True, on_click=set_url, args=("https://www.youtube.com/watch?v=26QPDBe-NB8",))
+    st.button("🌐 Operating Systems", use_container_width=True, on_click=set_url, args=("[https://www.youtube.com/watch?v=26QPDBe-NB8](https://www.youtube.com/watch?v=26QPDBe-NB8)",))
 
 url_input = st.text_input(
     "Enter YouTube Video URL:", 
     key="url_input_box",
-    placeholder="https://www.youtube.com/watch?v=aircAruvnKk"
+    placeholder="[https://www.youtube.com/watch?v=aircAruvnKk](https://www.youtube.com/watch?v=aircAruvnKk)"
 )
 
 with st.expander("📋 Direct Text / Transcript Input (Optional)"):
@@ -238,8 +239,8 @@ if generate_clicked:
                 raw_text = direct_text
                 segments = [{"timestamp": "00:00", "text": p.strip()} for p in direct_text.split('\n') if p.strip()]
             else:
-                with st.spinner("Transcribing lecture and subtitles via Groq AI..."):
-                    raw_text, segments = get_transcript(video_id, active_api_key)
+                with st.spinner("Transcribing lecture via AI Pipeline..."):
+                    raw_text, segments = get_transcript(video_id, active_api_key, supadata_api_key)
 
             with st.spinner(f"Generating {summary_mode} in {output_lang}..."):
                 notes = generate_summary(raw_text, summary_mode, active_api_key, detail_level, output_lang)
@@ -347,7 +348,6 @@ if 'summary' in st.session_state:
             if quiz_payload and quiz_payload.get("quiz"):
                 q_tab, f_tab = st.tabs(["📝 Multiple Choice Quiz", "🗂️ Interactive Flashcards"])
 
-                # --- MCQ QUIZ SECTION ---
                 with q_tab:
                     mcq_list = quiz_payload.get("quiz", [])
                     total_questions = len(mcq_list)
@@ -400,7 +400,6 @@ if 'summary' in st.session_state:
                         </div>
                         """, unsafe_allow_html=True)
 
-                # --- FLASHCARDS SECTION ---
                 with f_tab:
                     cards = quiz_payload.get("flashcards", [])
                     if cards:
@@ -452,7 +451,7 @@ if 'summary' in st.session_state:
                     {st.session_state['mindmap']}
                 </div>
                 <script type="module">
-                    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+                    import mermaid from '[https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs](https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs)';
                     mermaid.initialize({{
                         startOnLoad: true,
                         theme: '{"dark" if is_dark else "default"}',
@@ -475,7 +474,14 @@ if 'summary' in st.session_state:
 
     with right_col:
         st.subheader("📺 Video Player")
-        if st.session_state.get('video_id') and st.session_state['video_id'] != "direct_text":
-            st.video(f"https://www.youtube.com/watch?v={st.session_state['video_id']}")
+        vid_id = st.session_state.get('video_id', '')
+        if vid_id and vid_id != "direct_text" and len(vid_id) == 11:
+            st.video(f"[https://www.youtube.com/watch?v=](https://www.youtube.com/watch?v=){vid_id}")
         else:
-            st.info("Direct text input mode active.")
+            st.markdown("""
+            <div style="border: 2px dashed rgba(255, 255, 255, 0.15); border-radius: 12px; padding: 2.5rem 1rem; text-align: center;">
+                <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">📝</div>
+                <div style="font-weight: 700; font-size: 1.1rem; margin-bottom: 0.3rem;">Custom Transcript Mode</div>
+                <div style="font-size: 0.85rem; color: #94A3B8;">Direct text/transcript ingested. Study notes, mind map, and interactive quiz generated from custom input.</div>
+            </div>
+            """, unsafe_allow_html=True)
