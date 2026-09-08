@@ -1,7 +1,7 @@
-streamlit>=1.35.0
-groq>=0.9.0
-youtube-transcript-api>=0.6.2
-yt-dlp>=2024.5.27
-requests>=2.31.0
-fpdf2>=2.7.9
-python-dotenv>=1.0.1
+streamlit
+groq
+youtube-transcript-api
+yt-dlp
+requests
+fpdf2
+python-dotenv
