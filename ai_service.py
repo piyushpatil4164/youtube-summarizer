@@ -1,6 +1,4 @@
-import os
 import re
-import json
 from groq import Groq
 
 def call_groq_completion(client: Groq, messages: list, max_tokens: int = 1500, temperature: float = 0.3) -> str:
@@ -144,110 +142,48 @@ def generate_summary(text: str, mode: str, api_key: str, detail_level: str = "St
     ]
     return call_groq_completion(client, final_messages, max_tokens=1800, temperature=0.3)
 
+def ask_video_question(transcript_text: str, question: str, chat_history: list, api_key: str) -> str:
+    client = Groq(api_key=api_key)
+    safe_transcript = transcript_text[:12000]
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are an academic tutor assisting a student with this video lecture. "
+                "Answer the student's question accurately using ONLY the provided transcript. "
+                "If the information is not in the transcript, politely clarify that.\n\n"
+                f"--- LECTURE TRANSCRIPT ---\n{safe_transcript}"
+            )
+        }
+    ]
+
+    for item in chat_history[-6:]:
+        messages.append({"role": item["role"], "content": item["content"]})
+
+    messages.append({"role": "user", "content": question})
+    return call_groq_completion(client, messages, max_tokens=800, temperature=0.2)
+
 def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
     client = Groq(api_key=api_key)
     safe_transcript = transcript_text[:8000]
 
     system_prompt = (
-        "Extract the core concept hierarchy from the lecture transcript into a JSON array of connections.\n"
-        "Return ONLY a raw JSON array of objects with 'from' and 'to' string fields.\n"
-        "Keep concept labels short and concise (under 5 words). Do not use special punctuation.\n\n"
-        "Example Schema:\n"
-        '[\n'
-        '  {"from": "Neural Networks", "to": "Input Layer"},\n'
-        '  {"from": "Neural Networks", "to": "Hidden Layers"},\n'
-        '  {"from": "Hidden Layers", "to": "Activation Functions"}\n'
-        ']'
+        "You are an expert flowchart creator. Convert the lecture into clean Mermaid.js syntax.\n"
+        "RULES:\n"
+        "1. Start strictly with 'graph TD'\n"
+        "2. Node IDs must be simple alphanumeric strings without spaces (e.g., A, B, C1)\n"
+        "3. Wrap all node labels in square brackets with double quotes: A[\"Concept\"] --> B[\"Detail\"]\n"
+        "4. Do NOT use colons, parentheses, or commas inside node labels\n"
+        "5. Return ONLY raw valid Mermaid syntax. No markdown backticks."
     )
 
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Lecture transcript:\n{safe_transcript}"}
+        {"role": "user", "content": f"Lecture excerpt:\n{safe_transcript}"}
     ]
-    
-    raw_output = call_groq_completion(client, messages, max_tokens=600, temperature=0.1)
-    clean_json = raw_output.replace("```json", "").replace("```", "").strip()
-
-    try:
-        data = json.loads(clean_json)
-    except Exception:
-        match = re.search(r"\[.*\]", clean_json, re.DOTALL)
-        data = json.loads(match.group(0)) if match else []
-
-    if not data or not isinstance(data, list):
-        data = [
-            {"from": "Core Lecture Topic", "to": "Key Concepts"},
-            {"from": "Core Lecture Topic", "to": "Theoretical Foundation"},
-            {"from": "Key Concepts", "to": "Core Principles"},
-            {"from": "Theoretical Foundation", "to": "Practical Applications"}
-        ]
-
-    node_map = {}
-    lines = ["graph TD"]
-    node_counter = 1
-
-    for item in data:
-        if not isinstance(item, dict):
-            continue
-        src = re.sub(r'[^a-zA-Z0-9 ]', '', str(item.get("from", ""))).strip()
-        dst = re.sub(r'[^a-zA-Z0-9 ]', '', str(item.get("to", ""))).strip()
-
-        if not src or not dst:
-            continue
-
-        if src not in node_map:
-            node_map[src] = f"N{node_counter}"
-            node_counter += 1
-        if dst not in node_map:
-            node_map[dst] = f"N{node_counter}"
-            node_counter += 1
-
-        lines.append(f'    {node_map[src]}["{src}"] --> {node_map[dst]}["{dst}"]')
-
-    return "\n".join(lines)
-
-def generate_interactive_quiz(transcript_text: str, api_key: str, language: str = "English") -> dict:
-    client = Groq(api_key=api_key)
-    safe_transcript = transcript_text[:12000]
-
-    system_prompt = (
-        "You are an expert exam creator. Generate an interactive quiz and flashcard deck from the lecture.\n"
-        f"Language: {language}\n"
-        "Return ONLY a valid, raw JSON object (no markdown, no ```json codeblocks) with this exact schema:\n"
-        "{\n"
-        '  "quiz": [\n'
-        '    {\n'
-        '      "question": "Question text here?",\n'
-        '      "options": ["Option A", "Option B", "Option C", "Option D"],\n'
-        '      "correct_index": 0,\n'
-        '      "explanation": "Why this option is correct."\n'
-        '    }\n'
-        '  ],\n'
-        '  "flashcards": [\n'
-        '    {\n'
-        '      "front": "Key Term / Concept",\n'
-        '      "back": "Detailed concise explanation/definition"\n'
-        '    }\n'
-        '  ]\n'
-        "}\n"
-        "Provide exactly 5 high-yield MCQs and 5 flashcards."
-    )
-
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": f"Lecture Transcript:\n{safe_transcript}"}
-    ]
-
-    raw_response = call_groq_completion(client, messages, max_tokens=1500, temperature=0.2)
-    clean_json = raw_response.replace("```json", "").replace("```", "").strip()
-
-    try:
-        return json.loads(clean_json)
-    except Exception:
-        match = re.search(r"\{.*\}", clean_json, re.DOTALL)
-        if match:
-            try:
-                return json.loads(match.group(0))
-            except Exception:
-                pass
-        return {"quiz": [], "flashcards": []}
+    raw_code = call_groq_completion(client, messages, max_tokens=500, temperature=0.1)
+    clean = re.sub(r'```(?:mermaid)?', '', raw_code).replace('```', '').strip()
+    if not clean.startswith("graph"):
+        clean = "graph TD\n" + clean
+    return clean
