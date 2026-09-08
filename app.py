@@ -46,13 +46,20 @@ if "show_card_back" not in st.session_state:
 def set_url(url: str):
     st.session_state["url_input_box"] = url
 
-# Extreme Level Cyber-Glass Dark CSS
-LUXURY_DARK_CSS = """
+# Clean, Bug-Free Luxury Cyber-Glass Dark CSS
+CLEAN_DARK_CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
     
-    * {
-        font-family: 'Plus Jakarta Sans', sans-serif !important;
+    html, body, [class*="css"] {
+        font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    /* Prevent text bleed in Streamlit's top header & accessibility menus */
+    [data-testid="stHeader"] span:empty,
+    [data-testid="stMainMenu"] span[class*="visually-hidden"],
+    span[data-testid="stIconMaterial"] + span {
+        display: none !important;
     }
 
     /* Deep Cosmic Background */
@@ -63,75 +70,77 @@ LUXURY_DARK_CSS = """
 
     /* Sidebar Glassmorphism */
     section[data-testid="stSidebar"] {
-        background: rgba(13, 17, 30, 0.75) !important;
+        background: rgba(13, 17, 30, 0.85) !important;
         backdrop-filter: blur(18px) !important;
         -webkit-backdrop-filter: blur(18px) !important;
         border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
-        box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5) !important;
     }
 
+    /* Fix Streamlit Header Icons */
     header[data-testid="stHeader"] {
         background: transparent !important;
     }
+    header[data-testid="stHeader"] button {
+        color: #F8FAFC !important;
+    }
 
-    /* Hero Banner with Animated Gradient Glow */
+    /* Hero Banner */
     .hero-card {
         background: linear-gradient(135deg, rgba(30, 37, 68, 0.6) 0%, rgba(15, 20, 39, 0.8) 100%) !important;
         backdrop-filter: blur(20px) !important;
         border: 1px solid rgba(129, 140, 248, 0.25) !important;
         border-radius: 20px;
-        padding: 3rem 2rem;
+        padding: 2.5rem 2rem;
         text-align: center;
         margin-bottom: 2rem;
-        box-shadow: 0 10px 40px -10px rgba(99, 102, 241, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-        position: relative;
-        overflow: hidden;
-    }
-
-    .hero-card::before {
-        content: '';
-        position: absolute;
-        top: -50%;
-        left: -50%;
-        width: 200%;
-        height: 200%;
-        background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 60%);
-        pointer-events: none;
+        box-shadow: 0 10px 40px -10px rgba(99, 102, 241, 0.25);
     }
 
     .neon-badge {
         display: inline-flex;
         align-items: center;
-        gap: 0.4rem;
         background: rgba(99, 102, 241, 0.15);
         color: #A5B4FC !important;
         border: 1px solid rgba(99, 102, 241, 0.4);
-        padding: 0.4rem 1.1rem;
+        padding: 0.35rem 1rem;
         border-radius: 9999px;
-        font-size: 0.75rem;
+        font-size: 0.72rem;
         font-weight: 700;
         letter-spacing: 0.08em;
         text-transform: uppercase;
-        margin-bottom: 1rem;
-        box-shadow: 0 0 15px rgba(99, 102, 241, 0.3);
+        margin-bottom: 0.8rem;
     }
 
     .hero-title {
-        font-size: 3rem !important;
+        font-size: 2.8rem !important;
         font-weight: 800 !important;
         background: linear-gradient(135deg, #FFFFFF 30%, #A5B4FC 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        margin: 0.4rem 0 0.8rem 0 !important;
-        letter-spacing: -0.02em;
+        margin: 0.3rem 0 0.6rem 0 !important;
     }
 
     .hero-subtitle {
         color: #94A3B8 !important;
-        font-size: 1.05rem !important;
+        font-size: 1rem !important;
         max-width: 620px;
         margin: 0 auto !important;
-        line-height: 1.6;
+        line-height: 1.5;
+    }
+
+    /* Fix Streamlit Expander styling and arrow rendering */
+    div[data-testid="stExpander"] {
+        background: rgba(18, 23, 43, 0.5) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 12px !important;
+        overflow: hidden;
+    }
+    div[data-testid="stExpander"] summary {
+        color: #E2E8F0 !important;
+        font-weight: 600;
+    }
+    div[data-testid="stExpander"] summary:hover {
+        color: #818CF8 !important;
     }
 
     /* Metric Display Cards */
@@ -140,28 +149,20 @@ LUXURY_DARK_CSS = """
         border: 1px solid rgba(255, 255, 255, 0.08) !important;
         backdrop-filter: blur(14px) !important;
         border-radius: 14px;
-        padding: 1.3rem;
+        padding: 1.2rem;
         text-align: center;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
     }
 
-    .metric-card:hover {
-        transform: translateY(-3px);
-        border-color: rgba(129, 140, 248, 0.5) !important;
-        box-shadow: 0 8px 25px rgba(99, 102, 241, 0.2);
-    }
-
     .metric-val {
-        font-size: 2rem !important;
+        font-size: 1.8rem !important;
         font-weight: 800 !important;
         color: #818CF8 !important;
-        letter-spacing: -0.01em;
     }
 
     .metric-sub {
         color: #94A3B8 !important;
-        font-size: 0.82rem !important;
+        font-size: 0.8rem !important;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         margin-top: 0.3rem;
@@ -173,15 +174,11 @@ LUXURY_DARK_CSS = """
         color: #FFFFFF !important;
         border: 1px solid rgba(255, 255, 255, 0.12) !important;
         border-radius: 10px !important;
-        padding: 0.75rem 1rem !important;
-        font-size: 0.95rem !important;
-        transition: all 0.2s ease !important;
     }
 
     div[data-testid="stTextInput"] input:focus, div[data-testid="stTextArea"] textarea:focus {
         border-color: #6366F1 !important;
         box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3) !important;
-        background: rgba(20, 26, 48, 0.9) !important;
     }
 
     div[data-baseweb="select"] > div {
@@ -202,10 +199,6 @@ LUXURY_DARK_CSS = """
         border-radius: 10px !important;
     }
 
-    ul[data-baseweb="menu"] li:hover {
-        background: #1E2544 !important;
-    }
-
     /* Buttons */
     button[kind="primary"] {
         background: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%) !important;
@@ -213,16 +206,12 @@ LUXURY_DARK_CSS = """
         border: none !important;
         border-radius: 10px !important;
         font-weight: 700 !important;
-        padding: 0.7rem 1.4rem !important;
-        letter-spacing: 0.02em !important;
         box-shadow: 0 4px 18px rgba(99, 102, 241, 0.4) !important;
-        transition: all 0.25s ease !important;
     }
 
     button[kind="primary"]:hover {
         transform: translateY(-2px) !important;
         box-shadow: 0 8px 25px rgba(99, 102, 241, 0.6) !important;
-        background: linear-gradient(135deg, #4F46E5 0%, #4338CA 100%) !important;
     }
 
     button[kind="secondary"] {
@@ -231,17 +220,15 @@ LUXURY_DARK_CSS = """
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
         border-radius: 10px !important;
         font-weight: 600 !important;
-        transition: all 0.2s ease !important;
     }
 
     button[kind="secondary"]:hover {
         background: rgba(255, 255, 255, 0.08) !important;
         border-color: #818CF8 !important;
         color: #FFFFFF !important;
-        transform: translateY(-2px) !important;
     }
 
-    /* Navigation Tabs */
+    /* Tabs */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
         background: rgba(15, 20, 36, 0.6);
@@ -261,20 +248,11 @@ LUXURY_DARK_CSS = """
     .stTabs [aria-selected="true"] {
         background: #1E2544 !important;
         color: #818CF8 !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
-    }
-
-    /* Video Frame */
-    div[data-testid="stVideo"] {
-        border-radius: 16px;
-        overflow: hidden;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
     }
 </style>
 """
 
-st.markdown(LUXURY_DARK_CSS, unsafe_allow_html=True)
+st.markdown(CLEAN_DARK_CSS, unsafe_allow_html=True)
 
 # Sidebar Controls
 with st.sidebar:
@@ -319,14 +297,14 @@ with c2:
 with c3:
     st.button("🌐 Operating Systems", use_container_width=True, on_click=set_url, args=("https://www.youtube.com/watch?v=26QPDBe-NB8",))
 
-# Main Input
+# Main URL Input Box
 url_input = st.text_input(
     "Paste YouTube URL:", 
     key="url_input_box",
     placeholder="https://www.youtube.com/watch?v=aircAruvnKk"
 )
 
-with st.expander("📋 Direct Text / Custom Lecture Ingestion (Optional)"):
+with st.expander("📋 Custom Lecture / Direct Transcript Ingestion"):
     direct_transcript_text = st.text_area("Paste raw notes or transcript text:", height=130)
 
 col_action, _ = st.columns([1.8, 4])
