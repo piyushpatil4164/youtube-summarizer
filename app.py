@@ -29,7 +29,7 @@ def get_secret(key_name: str) -> str:
 active_api_key = get_secret("GROQ_API_KEY")
 supadata_api_key = get_secret("SUPADATA_API_KEY")
 
-# Session States
+# Session State Initialization
 if "url_input_box" not in st.session_state:
     st.session_state["url_input_box"] = ""
 if "quiz_data" not in st.session_state:
@@ -46,29 +46,33 @@ if "show_card_back" not in st.session_state:
 def set_url(url: str):
     st.session_state["url_input_box"] = url
 
-# Clean, Bug-Free Luxury Cyber-Glass Dark CSS
-CLEAN_DARK_CSS = """
+# Permanent Dark Glassmorphism CSS with MainMenu / Theme Switcher Completely Removed
+PERMANENT_DARK_CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
     
     html, body, [class*="css"] {
-        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
     }
 
-    /* Prevent text bleed in Streamlit's top header & accessibility menus */
-    [data-testid="stHeader"] span:empty,
-    [data-testid="stMainMenu"] span[class*="visually-hidden"],
-    span[data-testid="stIconMaterial"] + span {
+    /* 1. COMPLETELY HIDE THE TOP-RIGHT HAMBURGER / THEME SWITCHER MENU */
+    #MainMenu, 
+    header[data-testid="stHeader"] .stActionButton,
+    div[data-testid="stToolbar"],
+    div[data-testid="stDecoration"],
+    div[data-testid="stStatusWidget"] {
         display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
     }
 
-    /* Deep Cosmic Background */
+    /* 2. FORCE DARK BASE BACKGROUND */
     .stApp {
         background: radial-gradient(circle at 50% 0%, #171938 0%, #090B13 60%, #05060A 100%) !important;
         color: #F8FAFC !important;
     }
 
-    /* Sidebar Glassmorphism */
+    /* 3. SIDEBAR GLASSMORPHISM */
     section[data-testid="stSidebar"] {
         background: rgba(13, 17, 30, 0.85) !important;
         backdrop-filter: blur(18px) !important;
@@ -76,15 +80,11 @@ CLEAN_DARK_CSS = """
         border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
     }
 
-    /* Fix Streamlit Header Icons */
     header[data-testid="stHeader"] {
         background: transparent !important;
     }
-    header[data-testid="stHeader"] button {
-        color: #F8FAFC !important;
-    }
 
-    /* Hero Banner */
+    /* 4. HERO BANNER */
     .hero-card {
         background: linear-gradient(135deg, rgba(30, 37, 68, 0.6) 0%, rgba(15, 20, 39, 0.8) 100%) !important;
         backdrop-filter: blur(20px) !important;
@@ -128,22 +128,18 @@ CLEAN_DARK_CSS = """
         line-height: 1.5;
     }
 
-    /* Fix Streamlit Expander styling and arrow rendering */
+    /* 5. EXPANDER FIX */
     div[data-testid="stExpander"] {
         background: rgba(18, 23, 43, 0.5) !important;
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
         border-radius: 12px !important;
-        overflow: hidden;
     }
     div[data-testid="stExpander"] summary {
         color: #E2E8F0 !important;
         font-weight: 600;
     }
-    div[data-testid="stExpander"] summary:hover {
-        color: #818CF8 !important;
-    }
 
-    /* Metric Display Cards */
+    /* 6. METRICS */
     .metric-card {
         background: rgba(18, 23, 43, 0.6) !important;
         border: 1px solid rgba(255, 255, 255, 0.08) !important;
@@ -168,7 +164,7 @@ CLEAN_DARK_CSS = """
         margin-top: 0.3rem;
     }
 
-    /* Inputs, Selectors & Text Areas */
+    /* 7. INPUTS AND CONTROLS */
     div[data-testid="stTextInput"] input, div[data-testid="stTextArea"] textarea {
         background: rgba(15, 20, 36, 0.8) !important;
         color: #FFFFFF !important;
@@ -199,7 +195,7 @@ CLEAN_DARK_CSS = """
         border-radius: 10px !important;
     }
 
-    /* Buttons */
+    /* 8. BUTTONS */
     button[kind="primary"] {
         background: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%) !important;
         color: #FFFFFF !important;
@@ -228,7 +224,7 @@ CLEAN_DARK_CSS = """
         color: #FFFFFF !important;
     }
 
-    /* Tabs */
+    /* 9. TABS */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
         background: rgba(15, 20, 36, 0.6);
@@ -252,7 +248,7 @@ CLEAN_DARK_CSS = """
 </style>
 """
 
-st.markdown(CLEAN_DARK_CSS, unsafe_allow_html=True)
+st.markdown(PERMANENT_DARK_CSS, unsafe_allow_html=True)
 
 # Sidebar Controls
 with st.sidebar:
@@ -441,7 +437,6 @@ if 'summary' in st.session_state:
             if payload and payload.get("quiz"):
                 q_tab, f_tab = st.tabs(["📝 Multiple Choice Quiz", "🗂️ Flip Flashcards"])
 
-                # MCQ Quiz
                 with q_tab:
                     mcqs = payload.get("quiz", [])
                     total_q = len(mcqs)
@@ -488,7 +483,6 @@ if 'summary' in st.session_state:
                         </div>
                         """, unsafe_allow_html=True)
 
-                # Flashcards
                 with f_tab:
                     cards = payload.get("flashcards", [])
                     if cards:
