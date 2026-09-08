@@ -1,6 +1,12 @@
+import os
 import re
 import html
+import glob
+import subprocess
+import requests
 from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api.proxies import GenericProxyConfig
+from groq import Groq
 
 DEMO_TRANSCRIPTS = {
     "UrsmFxElp5k": (
@@ -44,14 +50,88 @@ def format_timestamp(seconds: float) -> str:
     secs = int(seconds % 60)
     return f"{minutes:02d}:{secs:02d}"
 
-def get_transcript(video_id: str, api_key: str = ""):
-    """
-    Tier 1: Attempts YouTube standard subtitle track.
-    Tier 2: Falls back to pre-cached benchmark lecture transcripts.
-    """
-    # Tier 1: YouTube Captions Extraction
+def fetch_via_supadata(video_id: str, supadata_api_key: str):
+    url = f"https://api.supadata.ai/v1/youtube/transcript?videoId={video_id}"
+    headers = {"x-api-key": supadata_api_key}
+    response = requests.get(url, headers=headers, timeout=12)
+    
+    if response.status_code == 200:
+        data = response.json()
+        content = data.get("content", [])
+        if content:
+            segments, full_text = [], []
+            for item in content:
+                text_str = html.unescape(item.get("text", "")).replace("\n", " ").strip()
+                start_sec = float(item.get("start", 0) / 1000 if item.get("start", 0) > 1000 else item.get("start", 0))
+                if text_str:
+                    full_text.append(text_str)
+                    segments.append({"timestamp": format_timestamp(start_sec), "text": text_str})
+            if full_text:
+                return " ".join(full_text), segments
+    raise Exception(f"Supadata API status {response.status_code}")
+
+def transcribe_via_whisper(video_id: str, groq_api_key: str):
+    audio_path_template = f"/tmp/{video_id}.%(ext)s"
+    cmd = [
+        "yt-dlp",
+        "-x",
+        "--audio-format", "mp3",
+        "--audio-quality", "9",
+        "--max-filesize", "24M",
+        "--force-overwrites",
+        "-o", audio_path_template,
+        f"https://www.youtube.com/watch?v={video_id}"
+    ]
+    
+    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+    target_files = glob.glob(f"/tmp/{video_id}.*")
+    if not target_files:
+        raise Exception("Audio extraction failed")
+    
+    audio_path = target_files[0]
+    
     try:
-        t_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        client = Groq(api_key=groq_api_key)
+        with open(audio_path, "rb") as audio_file:
+            transcription = client.audio.transcriptions.create(
+                file=(os.path.basename(audio_path), audio_file.read()),
+                model="whisper-large-v3",
+                response_format="verbose_json"
+            )
+        
+        full_text = transcription.text
+        segments = []
+        if hasattr(transcription, 'segments') and transcription.segments:
+            for seg in transcription.segments:
+                start_sec = float(seg.get('start', 0.0) if isinstance(seg, dict) else getattr(seg, 'start', 0.0))
+                text_seg = seg.get('text', '') if isinstance(seg, dict) else getattr(seg, 'text', '')
+                if text_seg.strip():
+                    segments.append({"timestamp": format_timestamp(start_sec), "text": text_seg.strip()})
+        else:
+            segments = [{"timestamp": "00:00", "text": full_text}]
+            
+        return full_text, segments
+    finally:
+        for f in target_files:
+            if os.path.exists(f):
+                try:
+                    os.remove(f)
+                except Exception:
+                    pass
+
+def get_transcript(video_id: str, groq_api_key: str = "", supadata_key: str = "", proxy_url: str = ""):
+    # Tier 1: Supadata Gateway (if configured)
+    if supadata_key:
+        try:
+            return fetch_via_supadata(video_id, supadata_key)
+        except Exception:
+            pass
+
+    # Tier 2: Direct Timed-Text Scraper
+    try:
+        proxy_config = GenericProxyConfig(http_url=proxy_url, https_url=proxy_url) if proxy_url else None
+        ytt = YouTubeTranscriptApi(proxy_config=proxy_config) if proxy_config else YouTubeTranscriptApi
+        t_list = ytt.list_transcripts(video_id)
         try:
             track = t_list.find_transcript(['en', 'en-US', 'en-GB', 'en-IN', 'hi', 'es', 'fr', 'de'])
             data = track.fetch()
@@ -70,7 +150,14 @@ def get_transcript(video_id: str, api_key: str = ""):
     except Exception:
         pass
 
-    # Tier 2: Fallback to benchmark demos
+    # Tier 3: Whisper AI Speech-to-Text
+    if groq_api_key:
+        try:
+            return transcribe_via_whisper(video_id, groq_api_key)
+        except Exception:
+            pass
+
+    # Tier 4: Cached Benchmark Fallback
     if video_id in DEMO_TRANSCRIPTS:
         fallback_text = DEMO_TRANSCRIPTS[video_id]
         segments = [
