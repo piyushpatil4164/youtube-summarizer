@@ -6,7 +6,7 @@ class StudyNotesPDF(FPDF):
     def header(self):
         self.set_font('Helvetica', 'B', 14)
         self.set_text_color(79, 70, 229)
-        self.cell(0, 10, 'PiFI Yt summarizer — Study Notes', border=False, align='C', new_x="LMARGIN", new_y="NEXT")
+        self.cell(0, 10, 'AI Lecture Digest — Study Notes', border=False, align='C', new_x="LMARGIN", new_y="NEXT")
         self.set_draw_color(226, 232, 240)
         self.line(10, 20, 200, 20)
         self.ln(5)
@@ -22,7 +22,6 @@ def create_pdf(markdown_text: str) -> bytes:
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     
-    # Strip emojis and non-standard unicode characters that crash standard FPDF Helvetica
     clean_text = re.sub(r'[^\x00-\x7F]+', ' ', markdown_text)
     
     for raw_line in clean_text.split('\n'):
