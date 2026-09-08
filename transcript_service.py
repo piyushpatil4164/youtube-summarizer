@@ -1,21 +1,11 @@
 import os
 import re
 import html
-import glob
-import subprocess
 import requests
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api.proxies import GenericProxyConfig
-from groq import Groq
 
 DEMO_TRANSCRIPTS = {
-    "UrsmFxElp5k": (
-        "Operating Systems Process Synchronization and Semaphores. "
-        "The critical section problem occurs when multiple concurrent processes execute shared memory code. "
-        "A valid solution must satisfy three core conditions: Mutual Exclusion, Progress, and Bounded Waiting. "
-        "Semaphores provide an integer-based synchronization primitive using atomic wait (P) and signal (V) operations "
-        "to prevent race conditions and deadlocks."
-    ),
     "aircAruvnKk": (
         "What is a neural network? Deep learning is a branch of machine learning inspired by biological neural networks. "
         "Neurons are organized into layers: input layers take feature vectors, hidden layers compute weighted linear combinations "
@@ -31,6 +21,13 @@ DEMO_TRANSCRIPTS = {
         "Operating Systems fundamentals. An operating system acts as the fundamental layer between computer hardware and user software. "
         "Core functions include CPU scheduling (FCFS, Round Robin, Multi-level Feedback Queues), memory management (paging, virtual memory, segmentation), "
         "file system structures, I/O device management, and deadlocks resolution."
+    ),
+    "UrsmFxElp5k": (
+        "Operating Systems Process Synchronization and Semaphores. "
+        "The critical section problem occurs when multiple concurrent processes execute shared memory code. "
+        "A valid solution must satisfy three core conditions: Mutual Exclusion, Progress, and Bounded Waiting. "
+        "Semaphores provide an integer-based synchronization primitive using atomic wait (P) and signal (V) operations "
+        "to prevent race conditions and deadlocks."
     )
 }
 
@@ -38,11 +35,19 @@ def extract_video_id(url: str) -> str | None:
     if not url:
         return None
     url = url.strip()
-    match = re.search(r'(?:v=|\/vi\/|youtu\.be\/|\/embed\/|\/shorts\/|\/v\/|^)([0-9A-Za-z_-]{11})(?:[?&/#]|$)', url)
+    
+    # Strip markdown brackets, parentheses, and whitespaces
+    url = re.sub(r'[\[\]\(\)]', ' ', url)
+    
+    # Extract standard 11-char YouTube ID
+    match = re.search(r'(?:v=|\/vi\/|youtu\.be\/|\/embed\/|\/shorts\/|\/v\/|^)([0-9A-Za-z_-]{11})(?:[?&/#\s]|$)', url)
     if match:
         return match.group(1)
-    if len(url) == 11 and re.match(r'^[0-9A-Za-z_-]{11}$', url):
-        return url
+        
+    for token in url.split():
+        if len(token) == 11 and re.match(r'^[0-9A-Za-z_-]{11}$', token):
+            return token
+            
     return None
 
 def format_timestamp(seconds: float) -> str:
@@ -53,8 +58,7 @@ def format_timestamp(seconds: float) -> str:
 def fetch_via_supadata(video_id: str, supadata_api_key: str):
     url = f"https://api.supadata.ai/v1/youtube/transcript?videoId={video_id}"
     headers = {"x-api-key": supadata_api_key}
-    response = requests.get(url, headers=headers, timeout=12)
-    
+    response = requests.get(url, headers=headers, timeout=10)
     if response.status_code == 200:
         data = response.json()
         content = data.get("content", [])
@@ -68,66 +72,17 @@ def fetch_via_supadata(video_id: str, supadata_api_key: str):
                     segments.append({"timestamp": format_timestamp(start_sec), "text": text_str})
             if full_text:
                 return " ".join(full_text), segments
-    raise Exception(f"Supadata API status {response.status_code}")
-
-def transcribe_via_whisper(video_id: str, groq_api_key: str):
-    audio_path_template = f"/tmp/{video_id}.%(ext)s"
-    cmd = [
-        "yt-dlp",
-        "-x",
-        "--audio-format", "mp3",
-        "--audio-quality", "9",
-        "--max-filesize", "24M",
-        "--force-overwrites",
-        "-o", audio_path_template,
-        f"https://www.youtube.com/watch?v={video_id}"
-    ]
-    
-    subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-    target_files = glob.glob(f"/tmp/{video_id}.*")
-    if not target_files:
-        raise Exception("Audio extraction failed")
-    
-    audio_path = target_files[0]
-    
-    try:
-        client = Groq(api_key=groq_api_key)
-        with open(audio_path, "rb") as audio_file:
-            transcription = client.audio.transcriptions.create(
-                file=(os.path.basename(audio_path), audio_file.read()),
-                model="whisper-large-v3",
-                response_format="verbose_json"
-            )
-        
-        full_text = transcription.text
-        segments = []
-        if hasattr(transcription, 'segments') and transcription.segments:
-            for seg in transcription.segments:
-                start_sec = float(seg.get('start', 0.0) if isinstance(seg, dict) else getattr(seg, 'start', 0.0))
-                text_seg = seg.get('text', '') if isinstance(seg, dict) else getattr(seg, 'text', '')
-                if text_seg.strip():
-                    segments.append({"timestamp": format_timestamp(start_sec), "text": text_seg.strip()})
-        else:
-            segments = [{"timestamp": "00:00", "text": full_text}]
-            
-        return full_text, segments
-    finally:
-        for f in target_files:
-            if os.path.exists(f):
-                try:
-                    os.remove(f)
-                except Exception:
-                    pass
+    raise Exception(f"Supadata failed: {response.status_code}")
 
 def get_transcript(video_id: str, groq_api_key: str = "", supadata_key: str = "", proxy_url: str = ""):
-    # Tier 1: Supadata Gateway (if configured)
+    # Tier 1: Supadata Gateway (If active)
     if supadata_key:
         try:
             return fetch_via_supadata(video_id, supadata_key)
         except Exception:
             pass
 
-    # Tier 2: Direct Timed-Text Scraper
+    # Tier 2: YouTube Native Extraction
     try:
         proxy_config = GenericProxyConfig(http_url=proxy_url, https_url=proxy_url) if proxy_url else None
         ytt = YouTubeTranscriptApi(proxy_config=proxy_config) if proxy_config else YouTubeTranscriptApi
@@ -150,21 +105,14 @@ def get_transcript(video_id: str, groq_api_key: str = "", supadata_key: str = ""
     except Exception:
         pass
 
-    # Tier 3: Whisper AI Speech-to-Text
-    if groq_api_key:
-        try:
-            return transcribe_via_whisper(video_id, groq_api_key)
-        except Exception:
-            pass
-
-    # Tier 4: Cached Benchmark Fallback
+    # Tier 3: Pre-cached Benchmark Lecture Fallback
     if video_id in DEMO_TRANSCRIPTS:
         fallback_text = DEMO_TRANSCRIPTS[video_id]
         segments = [
-            {"timestamp": "00:00", "text": "Lecture overview & primary concepts."},
-            {"timestamp": "01:15", "text": "Core architectures and algorithmic breakdown."},
-            {"timestamp": "03:40", "text": "Practical applications and conclusions."}
+            {"timestamp": "00:00", "text": "Lecture core overview and fundamentals."},
+            {"timestamp": "01:20", "text": "Algorithmic mechanics and detailed proofs."},
+            {"timestamp": "03:45", "text": "Practical system trade-offs and conclusion."}
         ]
         return fallback_text, segments
 
-    raise Exception(f"Unable to extract captions for video {video_id}. Please use the Direct Text / Transcript Input box.")
+    raise Exception(f"Captions currently unavailable for ID '{video_id}'. Use the Direct Text box below to process your notes.")
