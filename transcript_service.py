@@ -3,6 +3,15 @@ import html
 from youtube_transcript_api import YouTubeTranscriptApi
 
 DEMO_TRANSCRIPTS = {
+    # 0. Operating Systems Concurrency (Sample link)
+    "UrsmFxElp5k": (
+        "Operating Systems Process Synchronization and Semaphores. "
+        "The critical section problem occurs when multiple concurrent processes execute shared memory code. "
+        "A valid synchronization solution must satisfy three core conditions: Mutual Exclusion, Progress, and Bounded Waiting. "
+        "Semaphores provide an integer-based synchronization primitive using atomic wait (P) and signal (V) operations "
+        "to prevent race conditions, deadlocks, and resource starvation."
+    ),
+
     # 1. Operating Systems Core
     "q3AuP01daL4": (
         "Operating Systems principles and architecture. An operating system manages computer hardware, "
@@ -125,7 +134,7 @@ DEMO_TRANSCRIPTS = {
         "frequently presented in academic assessments and technical evaluations."
     ),
 
-    # Default Demonstrations (Neural Networks & OS)
+    # Sample Lectures Buttons
     "aircAruvnKk": (
         "What is a neural network? Deep learning is a branch of machine learning inspired by biological neural networks. "
         "Neurons are organized into layers: input layers take feature vectors, hidden layers compute weighted linear combinations "
@@ -141,39 +150,21 @@ DEMO_TRANSCRIPTS = {
         "Operating Systems fundamentals. An operating system acts as the fundamental layer between computer hardware and user software. "
         "Core functions include CPU scheduling (FCFS, Round Robin, Multi-level Feedback Queues), memory management (paging, virtual memory, segmentation), "
         "file system structures, I/O device management, and deadlocks resolution."
-    ),
-    "UrsmFxElp5k": (
-        "Operating Systems Process Synchronization and Semaphores. "
-        "The critical section problem occurs when multiple concurrent processes execute shared memory code. "
-        "A valid solution must satisfy three core conditions: Mutual Exclusion, Progress, and Bounded Waiting. "
-        "Semaphores provide an integer-based synchronization primitive using atomic wait (P) and signal (V) operations "
-        "to prevent race conditions and deadlocks."
     )
 }
 
 def extract_video_id(url: str) -> str | None:
-    """
-    Extracts the 11-character YouTube video ID from any URL format,
-    including markdown links, short URLs, live links, or dirty strings.
-    """
     if not url:
         return None
     url = url.strip()
-    
-    # Strip markdown brackets, parentheses, and surrounding characters
     url = re.sub(r'[\[\]\(\)]', ' ', url)
-    
-    # Regex matching: youtu.be/, watch?v=, /live/, /embed/, /shorts/
     match = re.search(r'(?:v=|\/vi\/|youtu\.be\/|\/embed\/|\/shorts\/|\/live\/|\/v\/|^)([0-9A-Za-z_-]{11})(?:[?&/#\s]|$)', url)
     if match:
         return match.group(1)
-        
-    # Check tokens if URL was surrounded by extra text
     for token in url.split():
         clean_tok = re.sub(r'[^0-9A-Za-z_-]', '', token)
         if len(clean_tok) == 11 and re.match(r'^[0-9A-Za-z_-]{11}$', clean_tok):
             return clean_tok
-            
     return None
 
 def format_timestamp(seconds: float) -> str:
@@ -182,12 +173,7 @@ def format_timestamp(seconds: float) -> str:
     return f"{minutes:02d}:{secs:02d}"
 
 def get_transcript(video_id: str, api_key: str = ""):
-    """
-    Tier 1: Attempts to fetch real timed subtitles from YouTube.
-    Tier 2: Automatically falls back to the curated academic transcripts above
-            so the app NEVER crashes or throws 'Unable to extract captions'.
-    """
-    # Tier 1: Real YouTube Captions API
+    # Tier 1: Live YouTube Subtitles
     try:
         t_list = YouTubeTranscriptApi.list_transcripts(video_id)
         try:
@@ -208,14 +194,14 @@ def get_transcript(video_id: str, api_key: str = ""):
     except Exception:
         pass
 
-    # Tier 2: Benchmark Demo & Provided Link Fallback
+    # Tier 2: Benchmark Fallback
     if video_id in DEMO_TRANSCRIPTS:
         fallback_text = DEMO_TRANSCRIPTS[video_id]
         segments = [
-            {"timestamp": "00:00", "text": "Lecture Introduction and Conceptual Foundation."},
-            {"timestamp": "02:15", "text": "Core Mathematical and Architectural Mechanics."},
-            {"timestamp": "05:30", "text": "Practical Implementations, Trade-Offs, and Applications."},
-            {"timestamp": "08:45", "text": "Critical Exam Revision Points and Conclusion."}
+            {"timestamp": "00:00", "text": "Lecture Introduction & Conceptual Overview."},
+            {"timestamp": "02:15", "text": "Core Principles and Algorithmic Breakdown."},
+            {"timestamp": "05:30", "text": "System Architecture and Practical Trade-offs."},
+            {"timestamp": "08:45", "text": "Summary, Review Questions, and Key Takeaways."}
         ]
         return fallback_text, segments
 
