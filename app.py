@@ -95,7 +95,11 @@ if generate_clicked:
         raw_text = ""
         segments = []
         video_id = extract_video_id(target_url) if target_url else "direct_text"
-        
+        if target_url and not video_id:
+            raise ValueError(
+                "Invalid YouTube URL. Please paste a normal YouTube video link, "
+                "such as https://www.youtube.com/watch?v=VIDEO_ID"
+            )        
         try:
             if direct_text:
                 raw_text = direct_text
