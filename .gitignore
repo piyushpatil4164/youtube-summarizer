@@ -6,6 +6,11 @@ secrets.toml
 *.pem
 *.key
 
+# Browser / authentication cookies
+cookies.txt
+cookies*.txt
+*.cookies
+
 # Python Virtual Environments
 venv/
 env/
