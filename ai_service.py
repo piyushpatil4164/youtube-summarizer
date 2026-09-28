@@ -1,254 +1,200 @@
 import re
+from typing import Any
+
 from groq import Groq
 
 
-PREFERRED_MODELS = [
+PRIMARY_MODELS = [
     "openai/gpt-oss-120b",
     "openai/gpt-oss-20b",
 ]
 
 
+def _model_candidates(client: Groq) -> list[str]:
+    """Return usable text-generation models, preferring current production models."""
+    available = []
+    try:
+        data = client.models.list()
+        for model in getattr(data, "data", []) or []:
+            model_id = getattr(model, "id", "") or ""
+            lowered = model_id.lower()
+            if not model_id:
+                continue
+            if any(x in lowered for x in ("whisper", "guard", "tts", "safeguard")):
+                continue
+            available.append(model_id)
+    except Exception:
+        # If model discovery is unavailable, use known current production IDs.
+        pass
+
+    ordered = []
+    for model_id in PRIMARY_MODELS:
+        if model_id in available or not available:
+            if model_id not in ordered:
+                ordered.append(model_id)
+
+    # Only use dynamically discovered models after the known-good models.
+    for model_id in available:
+        if model_id not in ordered:
+            ordered.append(model_id)
+
+    return ordered
+
+
 def call_groq_completion(
     client: Groq,
-    messages: list,
+    messages: list[dict[str, str]],
     max_tokens: int = 1500,
     temperature: float = 0.3,
 ) -> str:
+    """Call Groq with model fallback and clear error reporting."""
+    last_error: Exception | None = None
 
-    available_models = []
-
-    try:
-        models_data = client.models.list()
-
-        for model in models_data.data:
-            model_id = getattr(model, "id", "")
-
-            if not model_id:
-                continue
-
-            lower_id = model_id.lower()
-
-            if "whisper" in lower_id:
-                continue
-
-            if "guard" in lower_id:
-                continue
-
-            if "safeguard" in lower_id:
-                continue
-
-            available_models.append(model_id)
-
-    except Exception:
-        # If model discovery fails, use the current preferred model.
-        available_models = []
-
-    ordered_models = []
-
-    # Prefer currently supported models.
-    for model_name in PREFERRED_MODELS:
-        if model_name in available_models:
-            ordered_models.append(model_name)
-
-    # Then allow other models returned by Groq.
-    for model_name in available_models:
-        if model_name not in ordered_models:
-            ordered_models.append(model_name)
-
-    # Last-resort current model.
-    if not ordered_models:
-        ordered_models = ["openai/gpt-oss-120b"]
-
-    last_error = None
-
-    for model_name in ordered_models:
-
+    for model_name in _model_candidates(client):
         try:
             response = client.chat.completions.create(
                 model=model_name,
                 messages=messages,
                 temperature=temperature,
-                max_tokens=max_tokens,
+                max_completion_tokens=max_tokens,
             )
-
-            content = response.choices[0].message.content
-
-            if content:
-                return content
-
+            content = response.choices[0].message.content if response.choices else None
+            if content and content.strip():
+                return content.strip()
+            raise RuntimeError("Groq returned an empty response.")
         except Exception as exc:
             last_error = exc
             continue
 
+    detail = str(last_error) if last_error else "No compatible Groq model was available."
     raise RuntimeError(
-        "Groq failed to generate the requested output. "
-        f"Last error: {last_error}"
+        "Groq could not generate the requested output. "
+        "Please check GROQ_API_KEY, model availability, and rate limits. "
+        f"Details: {detail}"
     )
 
 
-def chunk_text(text: str, max_chars: int = 12000) -> list[str]:
-    """
-    Split a transcript into manageable pieces without cutting words.
-    """
-
-    text = text.strip()
-
+def chunk_text(text: str, max_chars: int = 18000) -> list[str]:
+    """Split transcript on word boundaries without dropping any text."""
+    text = (text or "").strip()
     if not text:
-        return [""]
+        return []
 
     words = text.split()
-
-    chunks = []
-    current_chunk = []
+    chunks: list[str] = []
+    current: list[str] = []
     current_length = 0
 
     for word in words:
-
-        word_length = len(word) + 1
-
-        if (
-            current_chunk
-            and current_length + word_length > max_chars
-        ):
-            chunks.append(" ".join(current_chunk))
-            current_chunk = []
+        extra = len(word) + (1 if current else 0)
+        if current and current_length + extra > max_chars:
+            chunks.append(" ".join(current))
+            current = []
             current_length = 0
+        current.append(word)
+        current_length += extra
 
-        current_chunk.append(word)
-        current_length += word_length
-
-    if current_chunk:
-        chunks.append(" ".join(current_chunk))
+    if current:
+        chunks.append(" ".join(current))
 
     return chunks
 
 
-def _summarize_chunk(
-    client: Groq,
-    chunk: str,
-    chunk_number: int,
-    total_chunks: int,
-    language: str,
-) -> str:
+def _language_instruction(language: str) -> str:
+    if language == "Hinglish":
+        return (
+            "Write the answer in natural Hinglish: Hindi written in the Latin alphabet, "
+            "while keeping technical terms in English."
+        )
+    return f"Write the entire answer strictly in {language}."
 
-    prompt = f"""
-You are processing part {chunk_number} of {total_chunks}
-of a longer educational lecture.
 
-Summarize the important information from this part.
+def _mode_prompt(mode: str, detail_level: str, language: str) -> str:
+    lang = _language_instruction(language)
+    prompts = {
+        "Detailed Study Notes": (
+            "You are an expert academic professor. Create comprehensive, exam-ready study notes.\n"
+            f"{lang}\nDetail Level: {detail_level}\n\n"
+            "Use these sections:\n"
+            "## 📌 Core Concept & Overview\n"
+            "## 🔑 Key Topics & Technical Breakdown\n"
+            "## 📐 Formulas, Definitions & Rules\n"
+            "## 💡 Practical Examples & Applications\n"
+            "## ❓ Potential Exam Questions & Answers"
+        ),
+        "Executive Summary": (
+            "Create a concise but complete executive summary of the lecture.\n"
+            f"{lang}\nDetail Level: {detail_level}\n\n"
+            "Cover the core topic, major concepts, important examples, and final takeaways."
+        ),
+        "Actionable Bullet Points": (
+            "Extract the most important concepts, facts, procedures, and steps from the lecture.\n"
+            f"{lang}\nDetail Level: {detail_level}\n"
+            "Use clear hierarchical bullet points and bold important terms."
+        ),
+        "Practice Quiz & Flashcards": (
+            "Create a revision set from the lecture.\n"
+            f"{lang}\n\n"
+            "### 🧠 Multiple Choice Questions (5 Questions)\n"
+            "Give 4 options, the correct answer, and a short explanation for each.\n\n"
+            "### 🗂️ Flashcard Deck (5 Key Concepts)\n"
+            "Format each as **Front** -> **Back**."
+        ),
+        "Formula & Keyword Cheat Sheet": (
+            "Create a compact technical cheat sheet containing important terms, definitions, formulas, rules, and keywords.\n"
+            f"{lang}\nDetail Level: {detail_level}"
+        ),
+    }
+    return prompts.get(mode, prompts["Detailed Study Notes"])
 
-Language:
-{language}
 
-Rules:
-- Keep important definitions.
-- Keep formulas and technical terms.
-- Keep important examples.
-- Keep important explanations.
-- Do not invent information.
-- Do not mention that this is a transcript.
-- Do not omit important academic concepts.
-
-LECTURE PART:
-
-{chunk}
-"""
-
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are an academic lecture summarization assistant. "
-                "Preserve factual information from the provided lecture."
-            ),
-        },
-        {
-            "role": "user",
-            "content": prompt,
-        },
-    ]
-
+def _summarize_chunk(client: Groq, chunk: str, part_number: int, language: str) -> str:
+    prompt = (
+        "Extract the important factual and technical information from this lecture section. "
+        "Do not invent information. Preserve definitions, formulas, examples, algorithms, and relationships. "
+        f"Write the result in {language}.\n\n"
+        f"LECTURE SECTION {part_number}:\n{chunk}"
+    )
     return call_groq_completion(
         client,
-        messages,
+        [
+            {"role": "system", "content": "You are a precise academic transcript analyst."},
+            {"role": "user", "content": prompt},
+        ],
         max_tokens=900,
         temperature=0.2,
     )
 
 
-def _reduce_summaries(
-    client: Groq,
-    summaries: list[str],
-    language: str,
-) -> str:
-    """
-    Combine chunk summaries into one compact context.
-
-    This prevents the final prompt from becoming too large.
-    """
-
-    if len(summaries) == 1:
-        return summaries[0]
-
-    current = summaries
-
-    while len(current) > 1:
-
-        next_level = []
-
-        # Combine a few summaries at a time.
-        for i in range(0, len(current), 4):
-
-            batch = current[i:i + 4]
-
+def _reduce_summaries(client: Groq, summaries: list[str], language: str) -> str:
+    """Reduce many intermediate summaries until they fit comfortably in a final prompt."""
+    current = summaries[:]
+    while len(current) > 8:
+        reduced: list[str] = []
+        for start in range(0, len(current), 6):
+            group = current[start : start + 6]
             combined = "\n\n".join(
-                f"PART SUMMARY {j + 1}:\n{summary}"
-                for j, summary in enumerate(batch)
+                f"SECTION SUMMARY {start + i + 1}:\n{item}" for i, item in enumerate(group)
             )
-
-            prompt = f"""
-Combine the following lecture summaries into one accurate
-academic summary.
-
-Language:
-{language}
-
-Rules:
-- Preserve important technical details.
-- Preserve definitions.
-- Preserve formulas.
-- Preserve examples.
-- Remove repetition.
-- Do not invent information.
-
-{combined}
-"""
-
-            messages = [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an academic information synthesis assistant."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": prompt,
-                },
-            ]
-
-            reduced = call_groq_completion(
-                client,
-                messages,
-                max_tokens=1000,
-                temperature=0.2,
+            reduced.append(
+                call_groq_completion(
+                    client,
+                    [
+                        {"role": "system", "content": "Combine academic summaries without losing important facts."},
+                        {
+                            "role": "user",
+                            "content": (
+                                f"Combine these summaries into a faithful condensed summary in {language}. "
+                                "Do not add facts that are not present.\n\n{combined}"
+                            ),
+                        },
+                    ],
+                    max_tokens=1100,
+                    temperature=0.2,
+                )
             )
-
-            next_level.append(reduced)
-
-        current = next_level
-
-    return current[0]
+        current = reduced
+    return "\n\n".join(current)
 
 
 def generate_summary(
@@ -258,301 +204,140 @@ def generate_summary(
     detail_level: str = "Standard",
     language: str = "English",
 ) -> str:
-
-    if not text or not text.strip():
-        raise ValueError("No transcript text was provided.")
+    text = (text or "").strip()
+    if not text:
+        raise ValueError("The transcript is empty, so there is nothing to summarize.")
+    if not api_key:
+        raise ValueError("GROQ_API_KEY is not configured.")
 
     client = Groq(api_key=api_key)
+    chunks = chunk_text(text)
+    selected_prompt = _mode_prompt(mode, detail_level, language)
 
-    chunks = chunk_text(text, max_chars=12000)
-
-    lang_instruction = (
-        f"Generate the entire response strictly in {language}. "
-        "If Hinglish is selected, use natural conversational Hindi "
-        "written in the Latin alphabet with technical terms in English."
-    )
-
-    prompts = {
-        "Detailed Study Notes": (
-            "You are an expert academic professor. "
-            "Create comprehensive, exam-ready study notes.\n"
-            f"{lang_instruction}\n"
-            f"Detail Level: {detail_level}\n\n"
-            "Structure strictly with these headers:\n"
-            "## 📌 Core Concept & Overview\n"
-            "## 🔑 Key Topics & Technical Breakdown\n"
-            "## 📐 Formulas, Definitions & Rules\n"
-            "## 💡 Practical Examples & Applications\n"
-            "## ❓ Potential Exam Questions & Answers"
-        ),
-
-        "Executive Summary": (
-            "Provide a structured executive briefing of this lecture.\n"
-            f"{lang_instruction}\n"
-            f"Detail Level: {detail_level}\n\n"
-            "- **Core Problem / Thesis**\n"
-            "- **Key Innovations & Takeaways**\n"
-            "- **Final Verdict & Implications**"
-        ),
-
-        "Actionable Bullet Points": (
-            "Extract critical points, step-by-step instructions, "
-            "and key facts.\n"
-            f"{lang_instruction}\n"
-            f"Detail Level: {detail_level}\n"
-            "Use clear hierarchical bullet points with bold keywords."
-        ),
-
-        "Practice Quiz & Flashcards": (
-            "Create a revision quiz and flashcard set.\n"
-            f"{lang_instruction}\n\n"
-            "### 🧠 Multiple Choice Questions (5 Questions)\n"
-            "Provide 4 options per question with answers and explanations.\n\n"
-            "### 🗂️ Flashcard Deck (5 Key Concepts)\n"
-            "Format: **Front (Term/Question)** -> **Back (Definition/Answer)**"
-        ),
-
-        "Formula & Keyword Cheat Sheet": (
-            "Extract all technical terms, definitions, "
-            "and equations into a reference cheat sheet.\n"
-            f"{lang_instruction}"
-        ),
-    }
-
-    selected_prompt = prompts.get(
-        mode,
-        prompts["Detailed Study Notes"],
-    )
-
-    # Short transcript: one direct request.
+    # Short transcripts can be processed in one request.
     if len(chunks) == 1:
-
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are an elite academic AI assistant "
-                    "dedicated to high-precision study synthesis."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"{selected_prompt}\n\n"
-                    "--- TRANSCRIPT ---\n"
-                    f"{chunks[0]}"
-                ),
-            },
-        ]
-
         return call_groq_completion(
             client,
-            messages,
-            max_tokens=2200,
-            temperature=0.3,
+            [
+                {
+                    "role": "system",
+                    "content": "You are an accurate academic AI assistant. Use only the supplied lecture transcript.",
+                },
+                {
+                    "role": "user",
+                    "content": f"{selected_prompt}\n\n--- TRANSCRIPT ---\n{chunks[0]}",
+                },
+            ],
+            max_tokens=2400,
+            temperature=0.25,
         )
 
-    # Long transcript:
-    # Process EVERY chunk, not only chunks[:3].
-    chunk_summaries = []
+    # Long transcripts: process EVERY chunk, then reduce and synthesize.
+    summaries = []
+    for index, chunk in enumerate(chunks, start=1):
+        summaries.append(_summarize_chunk(client, chunk, index, language))
 
-    for index, chunk in enumerate(chunks):
-
-        summary = _summarize_chunk(
-            client=client,
-            chunk=chunk,
-            chunk_number=index + 1,
-            total_chunks=len(chunks),
-            language=language,
-        )
-
-        chunk_summaries.append(summary)
-
-    combined_context = _reduce_summaries(
-        client,
-        chunk_summaries,
-        language,
+    combined = _reduce_summaries(client, summaries, language)
+    final_prompt = (
+        f"{selected_prompt}\n\n"
+        "The following are faithful summaries of every section of the original lecture. "
+        "Synthesize them into one coherent answer. Do not omit important concepts and do not invent facts.\n\n"
+        f"--- SECTION SUMMARIES ---\n{combined}"
     )
-
-    final_messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are an elite academic AI assistant. "
-                "Create the final study material using only "
-                "the information contained in the supplied lecture summaries."
-            ),
-        },
-        {
-            "role": "user",
-            "content": (
-                f"{selected_prompt}\n\n"
-                "--- COMPLETE LECTURE SYNTHESIS ---\n"
-                f"{combined_context}"
-            ),
-        },
-    ]
 
     return call_groq_completion(
         client,
-        final_messages,
-        max_tokens=2400,
-        temperature=0.3,
+        [
+            {"role": "system", "content": "You are an expert academic editor producing a faithful lecture digest."},
+            {"role": "user", "content": final_prompt},
+        ],
+        max_tokens=3000,
+        temperature=0.25,
+    )
+
+
+def _compact_transcript_for_chat(transcript_text: str, max_chars: int = 50000) -> str:
+    text = (transcript_text or "").strip()
+    if len(text) <= max_chars:
+        return text
+    # Keep beginning, middle, and end so chat is not biased to only the opening.
+    part = max_chars // 3
+    return (
+        text[:part]
+        + "\n\n[...middle of transcript condensed for context... ]\n\n"
+        + text[len(text) // 2 - part // 2 : len(text) // 2 + part // 2]
+        + "\n\n[...later transcript... ]\n\n"
+        + text[-part:]
     )
 
 
 def ask_video_question(
     transcript_text: str,
     question: str,
-    chat_history: list,
+    chat_history: list[dict[str, str]],
     api_key: str,
 ) -> str:
+    if not question.strip():
+        raise ValueError("Please enter a question.")
+    if not api_key:
+        raise ValueError("GROQ_API_KEY is not configured.")
 
     client = Groq(api_key=api_key)
+    safe_transcript = _compact_transcript_for_chat(transcript_text)
 
-    # Keep the existing chat feature safe for very large transcripts.
-    # The complete transcript is summarized before normal chat use.
-    if len(transcript_text) > 30000:
-
-        chunks = chunk_text(transcript_text, max_chars=10000)
-
-        summaries = []
-
-        for index, chunk in enumerate(chunks):
-
-            summary = _summarize_chunk(
-                client,
-                chunk,
-                index + 1,
-                len(chunks),
-                "English",
-            )
-
-            summaries.append(summary)
-
-        safe_transcript = _reduce_summaries(
-            client,
-            summaries,
-            "English",
-        )
-
-    else:
-        safe_transcript = transcript_text
-
-    messages = [
+    messages: list[dict[str, str]] = [
         {
             "role": "system",
             "content": (
-                "You are an academic tutor assisting a student "
-                "with this video lecture.\n\n"
-                "Answer the student's question accurately using "
-                "ONLY the provided lecture information.\n"
-                "If the information is not available, say so clearly.\n\n"
-                f"--- LECTURE ---\n{safe_transcript}"
+                "You are an academic tutor. Answer using ONLY the lecture transcript supplied below. "
+                "If the answer is not supported by the transcript, say that it is not available in the transcript.\n\n"
+                f"--- LECTURE TRANSCRIPT ---\n{safe_transcript}"
             ),
         }
     ]
 
-    for item in chat_history[-6:]:
-        messages.append(
-            {
-                "role": item["role"],
-                "content": item["content"],
-            }
-        )
+    for item in (chat_history or [])[-6:]:
+        role = item.get("role")
+        content = item.get("content")
+        if role in {"user", "assistant"} and content:
+            messages.append({"role": role, "content": content})
 
-    messages.append(
-        {
-            "role": "user",
-            "content": question,
-        }
-    )
-
-    return call_groq_completion(
-        client,
-        messages,
-        max_tokens=800,
-        temperature=0.2,
-    )
+    messages.append({"role": "user", "content": question.strip()})
+    return call_groq_completion(client, messages, max_tokens=1200, temperature=0.2)
 
 
-def generate_mindmap_code(
-    transcript_text: str,
-    api_key: str,
-) -> str:
+def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
+    if not transcript_text.strip():
+        raise ValueError("The transcript is empty, so a mind map cannot be generated.")
+    if not api_key:
+        raise ValueError("GROQ_API_KEY is not configured.")
 
     client = Groq(api_key=api_key)
-
-    if len(transcript_text) > 20000:
-
-        chunks = chunk_text(transcript_text, max_chars=10000)
-
-        summaries = []
-
-        for index, chunk in enumerate(chunks):
-
-            summary = _summarize_chunk(
-                client,
-                chunk,
-                index + 1,
-                len(chunks),
-                "English",
-            )
-
-            summaries.append(summary)
-
-        safe_transcript = _reduce_summaries(
-            client,
-            summaries,
-            "English",
-        )
-
-    else:
-        safe_transcript = transcript_text
+    source = _compact_transcript_for_chat(transcript_text, max_chars=35000)
 
     system_prompt = (
-        "You are an expert flowchart creator. "
-        "Convert the lecture into clean Mermaid.js syntax.\n"
+        "Create a simple Mermaid flowchart from the lecture.\n"
         "RULES:\n"
-        "1. Start strictly with 'graph TD'\n"
-        "2. Node IDs must be simple alphanumeric strings without spaces\n"
-        "3. Wrap node labels in square brackets with double quotes\n"
-        "4. Do NOT use colons, parentheses, or commas inside node labels\n"
-        "5. Return ONLY raw valid Mermaid syntax. "
-        "No markdown backticks."
+        "1. Start with graph TD.\n"
+        "2. Use simple alphanumeric node IDs only.\n"
+        "3. Use labels in double quotes inside square brackets.\n"
+        "4. Avoid parentheses, commas, colons, and special Mermaid syntax inside labels.\n"
+        "5. Return ONLY Mermaid code, with no markdown fences.\n"
+        "6. Use a small number of clear nodes so the diagram remains readable."
     )
 
-    messages = [
-        {
-            "role": "system",
-            "content": system_prompt,
-        },
-        {
-            "role": "user",
-            "content": (
-                "Lecture:\n"
-                f"{safe_transcript}"
-            ),
-        },
-    ]
-
-    raw_code = call_groq_completion(
+    raw = call_groq_completion(
         client,
-        messages,
-        max_tokens=700,
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"LECTURE:\n{source}"},
+        ],
+        max_tokens=900,
         temperature=0.1,
     )
 
-    clean = re.sub(
-        r"```(?:mermaid)?",
-        "",
-        raw_code,
-        flags=re.IGNORECASE,
-    )
-
-    clean = clean.replace("```", "").strip()
-
-    if not clean.startswith("graph"):
+    clean = re.sub(r"```(?:mermaid)?", "", raw, flags=re.IGNORECASE).replace("```", "").strip()
+    clean = re.sub(r"^\s*mermaid\s*\n", "", clean, flags=re.IGNORECASE).strip()
+    if not clean.lower().startswith("graph td"):
         clean = "graph TD\n" + clean
-
     return clean
