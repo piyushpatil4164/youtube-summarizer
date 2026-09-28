@@ -1,32 +1,34 @@
-# Security & Environment Variables
+# Environment variables and secrets
 .env
 .env.local
 .env.*
 secrets.toml
+.streamlit/secrets.toml
+
+# API keys / credentials
 *.pem
 *.key
 
-# Browser / authentication cookies
+# Browser / authentication cookies - NEVER commit these
 cookies.txt
 cookies*.txt
 *.cookies
 
-# Python Virtual Environments
+# Python virtual environments
 venv/
 env/
 ENV/
 .venv/
 
-# Byte-compiled / Cache files
+# Python cache
 __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
 
-# Streamlit Local Secrets & Caches
-.streamlit/secrets.toml
+# Streamlit cache
 .streamlit/cache/
 
-# OS-specific metadata
+# OS metadata
 .DS_Store
 Thumbs.db
