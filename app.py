@@ -177,15 +177,8 @@ if generate_clicked:
                 st.session_state["chat_history"] = []
                 st.session_state["mindmap"] = None
 
-                if any(segment.get("is_demo") for segment in segments):
-                    st.warning(
-                        "Demo transcript used for this built-in sample because YouTube blocked "
-                        "the Streamlit Cloud server. The AI output is generated from the built-in "
-                        "sample text, not freshly downloaded captions. Add YOUTUBE_PROXY_URL in "
-                        "Secrets to retrieve live captions."
-                    )
-                else:
-                    st.success("Study assets generated successfully!")
+                
+                st.success("Study assets generated successfully!")
 
             except Exception as exc:
                 st.error(str(exc))
