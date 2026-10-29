@@ -1,47 +1,17 @@
 import re
 from typing import Any
-
 from groq import Groq
 
-
+# Production Groq models with high token-per-minute limits on the free tier
 PRIMARY_MODELS = [
     "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
-    "openai/gpt-oss-120b",
-    "openai/gpt-oss-20b",
+    "mixtral-8x7b-32768",
 ]
 
-
 def _model_candidates(client: Groq) -> list[str]:
-    """Return usable text-generation models, preferring current production models."""
-    available = []
-    try:
-        data = client.models.list()
-        for model in getattr(data, "data", []) or []:
-            model_id = getattr(model, "id", "") or ""
-            lowered = model_id.lower()
-            if not model_id:
-                continue
-            if any(x in lowered for x in ("whisper", "guard", "tts", "safeguard")):
-                continue
-            available.append(model_id)
-    except Exception:
-        # If model discovery is unavailable, use known current production IDs.
-        pass
-
-    ordered = []
-    for model_id in PRIMARY_MODELS:
-        if model_id in available or not available:
-            if model_id not in ordered:
-                ordered.append(model_id)
-
-    # Only use dynamically discovered models after the known-good models.
-    for model_id in available:
-        if model_id not in ordered:
-            ordered.append(model_id)
-
-    return ordered
-
+    """Return high-throughput Groq production models, ignoring low-limit experimental models."""
+    return PRIMARY_MODELS
 
 def call_groq_completion(
     client: Groq,
@@ -66,6 +36,7 @@ def call_groq_completion(
             raise RuntimeError("Groq returned an empty response.")
         except Exception as exc:
             last_error = exc
+            # If 413 or rate-limited on one model, immediately try the next model
             continue
 
     detail = str(last_error) if last_error else "No compatible Groq model was available."
@@ -75,9 +46,8 @@ def call_groq_completion(
         f"Details: {detail}"
     )
 
-
-def chunk_text(text: str, max_chars: int = 18000) -> list[str]:
-    """Split transcript on word boundaries without dropping any text."""
+def chunk_text(text: str, max_chars: int = 8000) -> list[str]:
+    """Split transcript on word boundaries (max 8000 chars ~1800 tokens to safely stay under all TPM caps)."""
     text = (text or "").strip()
     if not text:
         return []
@@ -101,7 +71,6 @@ def chunk_text(text: str, max_chars: int = 18000) -> list[str]:
 
     return chunks
 
-
 def _language_instruction(language: str) -> str:
     if language == "Hinglish":
         return (
@@ -109,7 +78,6 @@ def _language_instruction(language: str) -> str:
             "while keeping technical terms in English."
         )
     return f"Write the entire answer strictly in {language}."
-
 
 def _mode_prompt(mode: str, detail_level: str, language: str) -> str:
     lang = _language_instruction(language)
@@ -149,7 +117,6 @@ def _mode_prompt(mode: str, detail_level: str, language: str) -> str:
     }
     return prompts.get(mode, prompts["Detailed Study Notes"])
 
-
 def _summarize_chunk(client: Groq, chunk: str, part_number: int, language: str) -> str:
     prompt = (
         "Extract the important factual and technical information from this lecture section. "
@@ -167,14 +134,12 @@ def _summarize_chunk(client: Groq, chunk: str, part_number: int, language: str) 
         temperature=0.2,
     )
 
-
 def _reduce_summaries(client: Groq, summaries: list[str], language: str) -> str:
-    """Reduce many intermediate summaries until they fit comfortably in a final prompt."""
     current = summaries[:]
-    while len(current) > 8:
+    while len(current) > 6:
         reduced: list[str] = []
-        for start in range(0, len(current), 6):
-            group = current[start : start + 6]
+        for start in range(0, len(current), 4):
+            group = current[start : start + 4]
             combined = "\n\n".join(
                 f"SECTION SUMMARY {start + i + 1}:\n{item}" for i, item in enumerate(group)
             )
@@ -187,17 +152,16 @@ def _reduce_summaries(client: Groq, summaries: list[str], language: str) -> str:
                             "role": "user",
                             "content": (
                                 f"Combine these summaries into a faithful condensed summary in {language}. "
-                                "Do not add facts that are not present.\n\n{combined}"
+                                f"Do not add facts that are not present.\n\n{combined}"
                             ),
                         },
                     ],
-                    max_tokens=1100,
+                    max_tokens=1000,
                     temperature=0.2,
                 )
             )
         current = reduced
     return "\n\n".join(current)
-
 
 def generate_summary(
     text: str,
@@ -213,10 +177,10 @@ def generate_summary(
         raise ValueError("GROQ_API_KEY is not configured.")
 
     client = Groq(api_key=api_key)
-    chunks = chunk_text(text)
+    chunks = chunk_text(text, max_chars=8000)
     selected_prompt = _mode_prompt(mode, detail_level, language)
 
-    # Short transcripts can be processed in one request.
+    # Short transcripts
     if len(chunks) == 1:
         return call_groq_completion(
             client,
@@ -230,11 +194,11 @@ def generate_summary(
                     "content": f"{selected_prompt}\n\n--- TRANSCRIPT ---\n{chunks[0]}",
                 },
             ],
-            max_tokens=2400,
+            max_tokens=2000,
             temperature=0.25,
         )
 
-    # Long transcripts: process EVERY chunk, then reduce and synthesize.
+    # Multi-chunk transcripts
     summaries = []
     for index, chunk in enumerate(chunks, start=1):
         summaries.append(_summarize_chunk(client, chunk, index, language))
@@ -253,16 +217,14 @@ def generate_summary(
             {"role": "system", "content": "You are an expert academic editor producing a faithful lecture digest."},
             {"role": "user", "content": final_prompt},
         ],
-        max_tokens=3000,
+        max_tokens=2200,
         temperature=0.25,
     )
 
-
-def _compact_transcript_for_chat(transcript_text: str, max_chars: int = 50000) -> str:
+def _compact_transcript_for_chat(transcript_text: str, max_chars: int = 15000) -> str:
     text = (transcript_text or "").strip()
     if len(text) <= max_chars:
         return text
-    # Keep beginning, middle, and end so chat is not biased to only the opening.
     part = max_chars // 3
     return (
         text[:part]
@@ -271,7 +233,6 @@ def _compact_transcript_for_chat(transcript_text: str, max_chars: int = 50000) -
         + "\n\n[...later transcript... ]\n\n"
         + text[-part:]
     )
-
 
 def ask_video_question(
     transcript_text: str,
@@ -285,7 +246,7 @@ def ask_video_question(
         raise ValueError("GROQ_API_KEY is not configured.")
 
     client = Groq(api_key=api_key)
-    safe_transcript = _compact_transcript_for_chat(transcript_text)
+    safe_transcript = _compact_transcript_for_chat(transcript_text, max_chars=12000)
 
     messages: list[dict[str, str]] = [
         {
@@ -298,15 +259,14 @@ def ask_video_question(
         }
     ]
 
-    for item in (chat_history or [])[-6:]:
+    for item in (chat_history or [])[-4:]:
         role = item.get("role")
         content = item.get("content")
         if role in {"user", "assistant"} and content:
             messages.append({"role": role, "content": content})
 
     messages.append({"role": "user", "content": question.strip()})
-    return call_groq_completion(client, messages, max_tokens=1200, temperature=0.2)
-
+    return call_groq_completion(client, messages, max_tokens=1000, temperature=0.2)
 
 def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
     if not transcript_text.strip():
@@ -315,7 +275,7 @@ def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
         raise ValueError("GROQ_API_KEY is not configured.")
 
     client = Groq(api_key=api_key)
-    source = _compact_transcript_for_chat(transcript_text, max_chars=35000)
+    source = _compact_transcript_for_chat(transcript_text, max_chars=10000)
 
     system_prompt = (
         "Create a simple Mermaid flowchart from the lecture.\n"
@@ -334,7 +294,7 @@ def generate_mindmap_code(transcript_text: str, api_key: str) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"LECTURE:\n{source}"},
         ],
-        max_tokens=900,
+        max_tokens=800,
         temperature=0.1,
     )
 
