@@ -157,7 +157,7 @@ DEMO_TRANSCRIPTS = {
         "frequently presented in academic assessments and technical evaluations."
     ),
 
-    # Sample Lectures
+    # Built-in Sample Lectures
     "aircAruvnKk": (
         "What is a neural network? Deep learning is a branch of machine learning inspired by biological neural networks. "
         "Neurons are organized into layers: input layers take feature vectors, hidden layers compute weighted linear combinations "
@@ -286,8 +286,13 @@ def get_transcript(video_id: str, api_key: str = ""):
 
         full_text, segments = [], []
         for item in data:
-            line = html.unescape(item.get('text', '')).replace('\n', ' ').strip()
-            start_sec = float(item.get('start', 0.0))
+            if isinstance(item, dict):
+                raw_text = item.get('text', '')
+                start_sec = float(item.get('start', 0.0))
+            else:
+                raw_text = getattr(item, 'text', '')
+                start_sec = float(getattr(item, 'start', 0.0))
+            line = html.unescape(raw_text).replace('\n', ' ').strip()
             if line:
                 full_text.append(line)
                 segments.append({"timestamp": format_timestamp(start_sec), "text": line})
@@ -296,7 +301,7 @@ def get_transcript(video_id: str, api_key: str = ""):
     except Exception:
         pass
 
-    # 2. Try SupaData Proxy (if key is provided in Secrets)
+    # 2. Try SupaData Proxy (if key is configured in Secrets)
     proxy_result = _fetch_via_proxy_api(video_id)
     if proxy_result:
         return proxy_result
