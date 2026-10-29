@@ -275,7 +275,7 @@ def get_transcript(video_id: str, api_key: str = ""):
     if not video_id or not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
         raise ValueError("Invalid YouTube video ID. Please paste a valid YouTube URL.")
 
-    # 1. Try Direct Live YouTube Caption Fetch
+    # 1. Try Direct Live YouTube Caption Fetch (supports dict and object returns)
     try:
         t_list = YouTubeTranscriptApi.list_transcripts(video_id)
         try:
@@ -287,12 +287,12 @@ def get_transcript(video_id: str, api_key: str = ""):
         full_text, segments = [], []
         for item in data:
             if isinstance(item, dict):
-                raw_text = item.get('text', '')
-                start_sec = float(item.get('start', 0.0))
+                raw_text = item.get("text", "")
+                start_sec = float(item.get("start", 0.0))
             else:
-                raw_text = getattr(item, 'text', '')
-                start_sec = float(getattr(item, 'start', 0.0))
-            line = html.unescape(raw_text).replace('\n', ' ').strip()
+                raw_text = getattr(item, "text", "")
+                start_sec = float(getattr(item, "start", 0.0))
+            line = html.unescape(raw_text).replace("\n", " ").strip()
             if line:
                 full_text.append(line)
                 segments.append({"timestamp": format_timestamp(start_sec), "text": line})
