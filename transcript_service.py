@@ -173,42 +173,18 @@ DEMO_TRANSCRIPTS = {
         "Operating Systems fundamentals. An operating system acts as the fundamental layer between computer hardware and user software. "
         "Core functions include CPU scheduling (FCFS, Round Robin, Multi-level Feedback Queues), memory management (paging, virtual memory, segmentation), "
         "file system structures, I/O device management, and deadlocks resolution."
-    )
+    ),
+
+    # Python Test Link
     "nKPbfIU442g": (
         "Python complete programming tutorial. Python is a high-level, interpreted programming "
         "language known for its clear syntax and readability. Key concepts include variables, "
         "data types like integers, strings, and floats, collection types such as lists, dictionaries, "
         "and tuples, conditional control flow with if-else statements, iterative loops, modular "
         "functions, and object-oriented programming with classes and methods."
-    ),
+    )
 }
 
-def _fetch_via_proxy_api(video_id: str):
-    api_key = _secret_or_env("sd_26ec30ba064819e8c524bf2f4c164171")
-    if not api_key:
-        return None
-
-    try:
-        url = f"https://api.supadata.ai/v1/youtube/transcript?videoId={video_id}"
-        headers = {"x-api-key": api_key}
-        res = requests.get(url, headers=headers, timeout=12)
-        if res.status_code == 200:
-            data = res.json()
-            content = data.get("content", [])
-            if content:
-                full_text = []
-                segments = []
-                for item in content:
-                    text = item.get("text", "").strip()
-                    start = float(item.get("offset", 0)) / 1000.0
-                    if text:
-                        full_text.append(text)
-                        segments.append({"timestamp": format_timestamp(start), "text": text})
-                if full_text:
-                    return " ".join(full_text), segments
-    except Exception:
-        pass
-    return None
 def extract_video_id(url: str) -> str | None:
     if not url:
         return None
@@ -257,89 +233,33 @@ def _secret_or_env(name: str) -> str:
         pass
     return ""
 
-def _build_http_client() -> requests.Session:
-    session = requests.Session()
-    session.headers.update({
-        "Accept-Language": "en-US,en;q=0.9",
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/130.0 Safari/537.36"
-        ),
-    })
-    proxy_url = _secret_or_env("YOUTUBE_PROXY_URL") or _secret_or_env("YOUTUBE_HTTP_PROXY")
-    if proxy_url:
-        session.proxies.update({"http": proxy_url, "https": proxy_url})
-    return session
+def _fetch_via_proxy_api(video_id: str):
+    """Fallback proxy using SupaData to fetch transcripts if configured in Secrets."""
+    api_key = _secret_or_env("SUPADATA_API_KEY")
+    if not api_key:
+        return None
 
-def _make_api() -> YouTubeTranscriptApi:
-    http_client = _build_http_client()
     try:
-        return YouTubeTranscriptApi(http_client=http_client)
-    except TypeError:
-        return YouTubeTranscriptApi()
-
-def _get_transcript_list(api: YouTubeTranscriptApi, video_id: str):
-    if hasattr(api, "list"):
-        return api.list(video_id)
-    legacy = getattr(api, "list_transcripts", None)
-    if callable(legacy):
-        return legacy(video_id)
-    legacy_cls = getattr(YouTubeTranscriptApi, "list_transcripts", None)
-    if callable(legacy_cls):
-        return legacy_cls(video_id)
-    raise RuntimeError("Installed youtube-transcript-api version has no transcript-list API.")
-
-def _fetch_data(track: Any) -> list[Any]:
-    fetched = track.fetch()
-    if hasattr(fetched, "to_raw_data"):
-        return list(fetched.to_raw_data())
-    return list(fetched)
-
-def _item_value(item: Any, key: str, default: Any = "") -> Any:
-    if isinstance(item, dict):
-        return item.get(key, default)
-    return getattr(item, key, default)
-
-def _convert_transcript_data(data: list[Any]):
-    full_text: list[str] = []
-    segments: list[dict[str, Any]] = []
-
-    for item in data:
-        raw_text = str(_item_value(item, "text", ""))
-        line = html.unescape(raw_text).replace("\n", " ").strip()
-        if not line:
-            continue
-        try:
-            start = float(_item_value(item, "start", 0.0))
-        except (TypeError, ValueError):
-            start = 0.0
-
-        full_text.append(line)
-        segments.append({
-            "timestamp": format_timestamp(start),
-            "text": line,
-        })
-
-    return " ".join(full_text).strip(), segments
-
-def _find_track(transcript_list):
-    try:
-        return transcript_list.find_manually_created_transcript(SUPPORTED_LANGUAGES)
+        url = f"https://api.supadata.ai/v1/youtube/transcript?videoId={video_id}"
+        headers = {"x-api-key": api_key}
+        res = requests.get(url, headers=headers, timeout=12)
+        if res.status_code == 200:
+            data = res.json()
+            content = data.get("content", [])
+            if content:
+                full_text = []
+                segments = []
+                for item in content:
+                    text = item.get("text", "").strip()
+                    start = float(item.get("offset", 0)) / 1000.0
+                    if text:
+                        full_text.append(text)
+                        segments.append({"timestamp": format_timestamp(start), "text": text})
+                if full_text:
+                    return " ".join(full_text), segments
     except Exception:
         pass
-    try:
-        return transcript_list.find_generated_transcript(SUPPORTED_LANGUAGES)
-    except Exception:
-        pass
-    try:
-        return transcript_list.find_transcript(SUPPORTED_LANGUAGES)
-    except Exception:
-        pass
-    try:
-        return next(iter(transcript_list))
-    except StopIteration as exc:
-        raise Exception("The video does not have accessible captions.") from exc
+    return None
 
 def _demo_result(video_id: str):
     text = DEMO_TRANSCRIPTS[video_id]
@@ -355,23 +275,37 @@ def get_transcript(video_id: str, api_key: str = ""):
     if not video_id or not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
         raise ValueError("Invalid YouTube video ID. Please paste a valid YouTube URL.")
 
-    # 1. Try Live Captions
-    # 1. Try Live YouTube direct
+    # 1. Try Direct Live YouTube Caption Fetch
     try:
-        # ... your regular extraction code ...
+        t_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        try:
+            track = t_list.find_transcript(SUPPORTED_LANGUAGES)
+        except Exception:
+            track = next(iter(t_list))
+        data = track.fetch()
+
+        full_text, segments = [], []
+        for item in data:
+            line = html.unescape(item.get('text', '')).replace('\n', ' ').strip()
+            start_sec = float(item.get('start', 0.0))
+            if line:
+                full_text.append(line)
+                segments.append({"timestamp": format_timestamp(start_sec), "text": line})
+        if full_text:
+            return " ".join(full_text), segments
     except Exception:
         pass
 
-    # 2. Try SupaData fallback (handles cloud IP bans for ANY video link)
+    # 2. Try SupaData Proxy (if key is provided in Secrets)
     proxy_result = _fetch_via_proxy_api(video_id)
     if proxy_result:
         return proxy_result
 
-    # 3. Benchmark dictionary fallback
+    # 3. Try Pre-cached Fallback (Catches IP blocks, VideoUnavailable, AgeRestricted)
     if video_id in DEMO_TRANSCRIPTS:
         return _demo_result(video_id)
 
-    # 3. If not in demo dictionary
+    # 4. If all automated methods fail
     raise Exception(
         f"Unable to extract captions for video ID '{video_id}'. "
         "Please paste the lecture notes into the 'Direct Text / Transcript Input' box above."
