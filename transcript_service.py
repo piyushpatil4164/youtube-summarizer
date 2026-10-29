@@ -174,6 +174,13 @@ DEMO_TRANSCRIPTS = {
         "Core functions include CPU scheduling (FCFS, Round Robin, Multi-level Feedback Queues), memory management (paging, virtual memory, segmentation), "
         "file system structures, I/O device management, and deadlocks resolution."
     )
+    "nKPbfIU442g": (
+        "Python complete programming tutorial. Python is a high-level, interpreted programming "
+        "language known for its clear syntax and readability. Key concepts include variables, "
+        "data types like integers, strings, and floats, collection types such as lists, dictionaries, "
+        "and tuples, conditional control flow with if-else statements, iterative loops, modular "
+        "functions, and object-oriented programming with classes and methods."
+    ),
 }
 
 def extract_video_id(url: str) -> str | None:
