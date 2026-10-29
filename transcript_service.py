@@ -356,18 +356,18 @@ def get_transcript(video_id: str, api_key: str = ""):
         raise ValueError("Invalid YouTube video ID. Please paste a valid YouTube URL.")
 
     # 1. Try Live Captions
+    # 1. Try Live YouTube direct
     try:
-        api = _make_api()
-        transcript_list = _get_transcript_list(api, video_id)
-        track = _find_track(transcript_list)
-        data = _fetch_data(track)
-        full_text, segments = _convert_transcript_data(data)
-        if full_text:
-            return full_text, segments
+        # ... your regular extraction code ...
     except Exception:
         pass
 
-    # 2. Universal Fallback (Catches IP blocks, VideoUnavailable, AgeRestricted, missing captions)
+    # 2. Try SupaData fallback (handles cloud IP bans for ANY video link)
+    proxy_result = _fetch_via_proxy_api(video_id)
+    if proxy_result:
+        return proxy_result
+
+    # 3. Benchmark dictionary fallback
     if video_id in DEMO_TRANSCRIPTS:
         return _demo_result(video_id)
 
