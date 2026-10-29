@@ -1,34 +1,72 @@
-# Environment variables and secrets
+# =======================================================
+# Environment Variables, Secrets & Credentials
+# =======================================================
 .env
 .env.local
 .env.*
 secrets.toml
 .streamlit/secrets.toml
-
-# API keys / credentials
 *.pem
 *.key
+*.cert
 
-# Browser / authentication cookies - NEVER commit these
+# Browser / Authentication Cookies
 cookies.txt
 cookies*.txt
 *.cookies
 
-# Python virtual environments
-venv/
-env/
-ENV/
-.venv/
-
-# Python cache
+# =======================================================
+# Python Runtime & Caching
+# =======================================================
 __pycache__/
 *.py[cod]
 *$py.class
 .pytest_cache/
+*.swp
+*.swo
 
-# Streamlit cache
+# =======================================================
+# Virtual Environments
+# =======================================================
+venv/
+env/
+ENV/
+.venv/
+env.bak/
+venv.bak/
+
+# =======================================================
+# Streamlit & Local App Runtime Cache
+# =======================================================
 .streamlit/cache/
 
-# OS metadata
+# =======================================================
+# IDE & Code Editor Metadata
+# =======================================================
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# =======================================================
+# Operating System Artifacts
+# =======================================================
 .DS_Store
 Thumbs.db
+ehthumbs.db
+
+# =======================================================
+# Build & Distribution Artifacts
+# =======================================================
+build/
+dist/
+*.egg-info/
+*.egg
+
+# =======================================================
+# Generated Testing & Document Artifacts (Optional / Local)
+# =======================================================
+*.pdf
+*.docx
+*.pptx
