@@ -2,15 +2,14 @@ import re
 from typing import Any
 from groq import Groq
 
-# Production Groq models with high token-per-minute limits on the free tier
+# Active production Groq models with high free-tier rate limits
 PRIMARY_MODELS = [
     "llama-3.3-70b-versatile",
     "llama-3.1-8b-instant",
-    "mixtral-8x7b-32768",
 ]
 
 def _model_candidates(client: Groq) -> list[str]:
-    """Return high-throughput Groq production models, ignoring low-limit experimental models."""
+    """Return high-throughput Groq production models."""
     return PRIMARY_MODELS
 
 def call_groq_completion(
@@ -36,7 +35,6 @@ def call_groq_completion(
             raise RuntimeError("Groq returned an empty response.")
         except Exception as exc:
             last_error = exc
-            # If 413 or rate-limited on one model, immediately try the next model
             continue
 
     detail = str(last_error) if last_error else "No compatible Groq model was available."
@@ -47,7 +45,7 @@ def call_groq_completion(
     )
 
 def chunk_text(text: str, max_chars: int = 8000) -> list[str]:
-    """Split transcript on word boundaries (max 8000 chars ~1800 tokens to safely stay under all TPM caps)."""
+    """Split transcript on word boundaries (keeps requests well under rate limits)."""
     text = (text or "").strip()
     if not text:
         return []
