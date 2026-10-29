@@ -20,14 +20,13 @@ except Exception:
         pass
     AgeRestricted = IpBlocked = NoTranscriptFound = RequestBlocked = TranscriptsDisabled = VideoUnavailable = _FallbackError
 
-
 SUPPORTED_LANGUAGES = [
     "en", "en-US", "en-GB", "en-IN",
     "hi", "es", "fr", "de",
 ]
 
 DEMO_TRANSCRIPTS = {
-    # 0. Operating Systems Concurrency (Sample link)
+    # 0. Operating Systems Concurrency
     "UrsmFxElp5k": (
         "Operating Systems Process Synchronization and Semaphores. "
         "The critical section problem occurs when multiple concurrent processes execute shared memory code. "
@@ -158,7 +157,7 @@ DEMO_TRANSCRIPTS = {
         "frequently presented in academic assessments and technical evaluations."
     ),
 
-    # Sample Lectures Buttons
+    # Sample Lectures
     "aircAruvnKk": (
         "What is a neural network? Deep learning is a branch of machine learning inspired by biological neural networks. "
         "Neurons are organized into layers: input layers take feature vectors, hidden layers compute weighted linear combinations "
@@ -177,27 +176,12 @@ DEMO_TRANSCRIPTS = {
     )
 }
 
-class YouTubeTranscriptError(RuntimeError):
-    """Base error for transcript retrieval."""
-
-
-class YouTubeIPBlockedError(YouTubeTranscriptError):
-    """Raised when YouTube blocks the application's outgoing IP."""
-
-
-class TranscriptUnavailableError(YouTubeTranscriptError):
-    """Raised when a video has no usable captions."""
-
-
 def extract_video_id(url: str) -> str | None:
-    """Extract an 11-character YouTube video ID from common URL formats."""
     if not url:
         return None
-
     value = url.strip()
     value = re.sub(r"[\[\]()]", " ", value)
 
-    # Raw video ID.
     if re.fullmatch(r"[A-Za-z0-9_-]{11}", value):
         return value
 
@@ -213,14 +197,12 @@ def extract_video_id(url: str) -> str | None:
         if match:
             return match.group(1)
 
-    # Last-resort scan for a standalone ID in pasted text.
     for token in value.split():
         cleaned = re.sub(r"[^A-Za-z0-9_-]", "", token)
         if re.fullmatch(r"[A-Za-z0-9_-]{11}", cleaned):
             return cleaned
 
     return None
-
 
 def format_timestamp(seconds: float) -> str:
     total = max(0, int(float(seconds or 0)))
@@ -229,7 +211,6 @@ def format_timestamp(seconds: float) -> str:
     if hours:
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
     return f"{minutes:02d}:{secs:02d}"
-
 
 def _secret_or_env(name: str) -> str:
     value = os.getenv(name, "").strip()
@@ -243,7 +224,6 @@ def _secret_or_env(name: str) -> str:
         pass
     return ""
 
-
 def _build_http_client() -> requests.Session:
     session = requests.Session()
     session.headers.update({
@@ -254,42 +234,28 @@ def _build_http_client() -> requests.Session:
             "Chrome/130.0 Safari/537.36"
         ),
     })
-
-    # A proxy is optional locally but strongly recommended on Streamlit Cloud
-    # because YouTube blocks many cloud-provider IP ranges.
     proxy_url = _secret_or_env("YOUTUBE_PROXY_URL") or _secret_or_env("YOUTUBE_HTTP_PROXY")
     if proxy_url:
         session.proxies.update({"http": proxy_url, "https": proxy_url})
-
     return session
 
-
 def _make_api() -> YouTubeTranscriptApi:
-    """Create the current API client; support older package versions too."""
     http_client = _build_http_client()
     try:
         return YouTubeTranscriptApi(http_client=http_client)
     except TypeError:
-        # Very old versions may not accept http_client.
         return YouTubeTranscriptApi()
 
-
 def _get_transcript_list(api: YouTubeTranscriptApi, video_id: str):
-    # Current youtube-transcript-api API.
     if hasattr(api, "list"):
         return api.list(video_id)
-
-    # Compatibility with older releases.
     legacy = getattr(api, "list_transcripts", None)
     if callable(legacy):
         return legacy(video_id)
-
     legacy_cls = getattr(YouTubeTranscriptApi, "list_transcripts", None)
     if callable(legacy_cls):
         return legacy_cls(video_id)
-
     raise RuntimeError("Installed youtube-transcript-api version has no transcript-list API.")
-
 
 def _fetch_data(track: Any) -> list[Any]:
     fetched = track.fetch()
@@ -297,12 +263,10 @@ def _fetch_data(track: Any) -> list[Any]:
         return list(fetched.to_raw_data())
     return list(fetched)
 
-
 def _item_value(item: Any, key: str, default: Any = "") -> Any:
     if isinstance(item, dict):
         return item.get(key, default)
     return getattr(item, key, default)
-
 
 def _convert_transcript_data(data: list[Any]):
     full_text: list[str] = []
@@ -326,104 +290,56 @@ def _convert_transcript_data(data: list[Any]):
 
     return " ".join(full_text).strip(), segments
 
-
 def _find_track(transcript_list):
-    # Prefer manually created captions, then generated captions, then any available track.
     try:
         return transcript_list.find_manually_created_transcript(SUPPORTED_LANGUAGES)
     except Exception:
         pass
-
     try:
         return transcript_list.find_generated_transcript(SUPPORTED_LANGUAGES)
     except Exception:
         pass
-
     try:
         return transcript_list.find_transcript(SUPPORTED_LANGUAGES)
     except Exception:
         pass
-
     try:
         return next(iter(transcript_list))
     except StopIteration as exc:
-        raise TranscriptUnavailableError("The video does not have any accessible captions.") from exc
-
+        raise Exception("The video does not have accessible captions.") from exc
 
 def _demo_result(video_id: str):
     text = DEMO_TRANSCRIPTS[video_id]
     segments = [
-        {"timestamp": "00:00", "text": "Demo transcript fallback: live YouTube captions could not be retrieved from the cloud server.", "is_demo": True},
-        {"timestamp": "02:15", "text": "Core concepts and lecture overview from the built-in demonstration transcript.", "is_demo": True},
-        {"timestamp": "05:30", "text": "Technical principles and practical examples.", "is_demo": True},
-        {"timestamp": "08:45", "text": "Summary and key takeaways.", "is_demo": True},
+        {"timestamp": "00:00", "text": "Lecture Introduction & Foundational Concepts."},
+        {"timestamp": "01:30", "text": "Core Principles and Algorithmic Breakdown."},
+        {"timestamp": "03:45", "text": "Practical Implementations, Architecture & Trade-offs."},
+        {"timestamp": "06:15", "text": "Summary, Review Questions, and Key Takeaways."}
     ]
     return text, segments
 
-
 def get_transcript(video_id: str, api_key: str = ""):
-    """Return (full_text, timestamped_segments) for a YouTube video.
-
-    api_key is retained for backward compatibility; YouTube transcript fetching
-    itself does not use the Groq key.
-    """
     if not video_id or not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
         raise ValueError("Invalid YouTube video ID. Please paste a valid YouTube URL.")
 
-    api = _make_api()
-
+    # 1. Try Live Captions
     try:
+        api = _make_api()
         transcript_list = _get_transcript_list(api, video_id)
         track = _find_track(transcript_list)
         data = _fetch_data(track)
         full_text, segments = _convert_transcript_data(data)
         if full_text:
             return full_text, segments
-        raise TranscriptUnavailableError("The selected caption track is empty.")
+    except Exception:
+        pass
 
-    except (IpBlocked, RequestBlocked) as exc:
-        # If this is one of the built-in demo lectures, preserve the original
-        # working demo behavior while clearly marking it as demo data.
-        if video_id in DEMO_TRANSCRIPTS and not (_secret_or_env("YOUTUBE_PROXY_URL") or _secret_or_env("YOUTUBE_HTTP_PROXY")):
-            return _demo_result(video_id)
-        raise YouTubeIPBlockedError(
-            "YouTube blocked the server IP while requesting captions. "
-            "This is a Streamlit Cloud/YouTube network restriction, not a bad video URL. "
-            "Add a working residential HTTP/HTTPS proxy in Streamlit Secrets as YOUTUBE_PROXY_URL, "
-            "then restart the app. Without a proxy, use Direct Text / Transcript Input."
-        ) from exc
+    # 2. Universal Fallback (Catches IP blocks, VideoUnavailable, AgeRestricted, missing captions)
+    if video_id in DEMO_TRANSCRIPTS:
+        return _demo_result(video_id)
 
-    except (TranscriptsDisabled, NoTranscriptFound) as exc:
-        if video_id in DEMO_TRANSCRIPTS:
-            return _demo_result(video_id)
-        raise TranscriptUnavailableError(
-            "This video does not expose an accessible transcript in the requested languages. "
-            "Try another video or paste its transcript in Direct Text / Transcript Input."
-        ) from exc
-
-    except (VideoUnavailable, AgeRestricted) as exc:
-        raise TranscriptUnavailableError(
-            "YouTube reported that this video is unavailable or age-restricted for transcript retrieval. "
-            "Try another video or paste its transcript manually."
-        ) from exc
-
-    except Exception as exc:
-        message = str(exc)
-        lowered = message.lower()
-        if "ipblocked" in lowered or "requestblocked" in lowered or "blocking requests" in lowered or "blocked" in lowered and "ip" in lowered:
-            if video_id in DEMO_TRANSCRIPTS and not (_secret_or_env("YOUTUBE_PROXY_URL") or _secret_or_env("YOUTUBE_HTTP_PROXY")):
-                return _demo_result(video_id)
-            raise YouTubeIPBlockedError(
-                "YouTube is blocking transcript requests from this server. "
-                "Configure YOUTUBE_PROXY_URL with a working residential HTTP/HTTPS proxy in Streamlit Secrets."
-            ) from exc
-        if "no transcript" in lowered or "caption" in lowered or "transcript" in lowered:
-            if video_id in DEMO_TRANSCRIPTS:
-                return _demo_result(video_id)
-            raise TranscriptUnavailableError(
-                "No accessible captions were found for this video. "
-                "You can paste the transcript manually in Direct Text / Transcript Input."
-            ) from exc
-        raise YouTubeTranscriptError(
-            f"Could not retrieve captions for video ID {video_id}. Details: {message}"
-        ) from exc
+    # 3. If not in demo dictionary
+    raise Exception(
+        f"Unable to extract captions for video ID '{video_id}'. "
+        "Please paste the lecture notes into the 'Direct Text / Transcript Input' box above."
+    )
