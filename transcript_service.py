@@ -183,6 +183,32 @@ DEMO_TRANSCRIPTS = {
     ),
 }
 
+def _fetch_via_proxy_api(video_id: str):
+    api_key = _secret_or_env("SUPADATA_API_KEY")
+    if not api_key:
+        return None
+
+    try:
+        url = f"https://api.supadata.ai/v1/youtube/transcript?videoId={video_id}"
+        headers = {"x-api-key": api_key}
+        res = requests.get(url, headers=headers, timeout=12)
+        if res.status_code == 200:
+            data = res.json()
+            content = data.get("content", [])
+            if content:
+                full_text = []
+                segments = []
+                for item in content:
+                    text = item.get("text", "").strip()
+                    start = float(item.get("offset", 0)) / 1000.0
+                    if text:
+                        full_text.append(text)
+                        segments.append({"timestamp": format_timestamp(start), "text": text})
+                if full_text:
+                    return " ".join(full_text), segments
+    except Exception:
+        pass
+    return None
 def extract_video_id(url: str) -> str | None:
     if not url:
         return None
