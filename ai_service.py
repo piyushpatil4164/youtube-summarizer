@@ -2,15 +2,40 @@ import re
 from typing import Any
 from groq import Groq
 
-# Active production Groq models with high free-tier rate limits
-PRIMARY_MODELS = [
+# Fallback known models in order of priority
+FALLBACK_MODELS = [
     "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
+    "llama3-8b-8192",
+    "llama3-70b-8192",
+    "gemma2-9b-it",
 ]
 
 def _model_candidates(client: Groq) -> list[str]:
-    """Return high-throughput Groq production models."""
-    return PRIMARY_MODELS
+    """Dynamically get models available to this API key to avoid 404/decommission errors."""
+    usable = []
+    try:
+        model_list = client.models.list()
+        all_ids = [m.id for m in getattr(model_list, "data", []) if getattr(m, "id", None)]
+        # Filter out audio, whisper, embeddings, and vision guardrails
+        for m_id in all_ids:
+            low = m_id.lower()
+            if any(x in low for x in ("whisper", "guard", "vision", "embed", "tts", "safeguard")):
+                continue
+            usable.append(m_id)
+    except Exception:
+        pass
+
+    # Prioritize standard versatile/chat models from the usable set
+    ordered = []
+    for pref in ["llama-3.3-70b-versatile", "llama3-8b-8192", "llama3-70b-8192"]:
+        if pref in usable and pref not in ordered:
+            ordered.append(pref)
+
+    for m_id in usable:
+        if m_id not in ordered:
+            ordered.append(m_id)
+
+    return ordered if ordered else FALLBACK_MODELS
 
 def call_groq_completion(
     client: Groq,
@@ -18,10 +43,11 @@ def call_groq_completion(
     max_tokens: int = 1500,
     temperature: float = 0.3,
 ) -> str:
-    """Call Groq with model fallback and clear error reporting."""
+    """Call Groq with automatic fallback across all available models."""
     last_error: Exception | None = None
+    candidates = _model_candidates(client)
 
-    for model_name in _model_candidates(client):
+    for model_name in candidates:
         try:
             response = client.chat.completions.create(
                 model=model_name,
@@ -37,7 +63,7 @@ def call_groq_completion(
             last_error = exc
             continue
 
-    detail = str(last_error) if last_error else "No compatible Groq model was available."
+    detail = str(last_error) if last_error else "No compatible Groq model found."
     raise RuntimeError(
         "Groq could not generate the requested output. "
         "Please check GROQ_API_KEY, model availability, and rate limits. "
@@ -45,7 +71,7 @@ def call_groq_completion(
     )
 
 def chunk_text(text: str, max_chars: int = 8000) -> list[str]:
-    """Split transcript on word boundaries (keeps requests well under rate limits)."""
+    """Split transcript cleanly to stay well within free tier per-request token caps."""
     text = (text or "").strip()
     if not text:
         return []
@@ -178,7 +204,6 @@ def generate_summary(
     chunks = chunk_text(text, max_chars=8000)
     selected_prompt = _mode_prompt(mode, detail_level, language)
 
-    # Short transcripts
     if len(chunks) == 1:
         return call_groq_completion(
             client,
@@ -196,7 +221,6 @@ def generate_summary(
             temperature=0.25,
         )
 
-    # Multi-chunk transcripts
     summaries = []
     for index, chunk in enumerate(chunks, start=1):
         summaries.append(_summarize_chunk(client, chunk, index, language))
