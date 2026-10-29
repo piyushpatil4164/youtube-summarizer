@@ -184,7 +184,7 @@ DEMO_TRANSCRIPTS = {
 }
 
 def _fetch_via_proxy_api(video_id: str):
-    api_key = _secret_or_env("SUPADATA_API_KEY")
+    api_key = _secret_or_env("sd_26ec30ba064819e8c524bf2f4c164171")
     if not api_key:
         return None
 
