@@ -1,11 +1,18 @@
+import html
+
 import streamlit as st
 import streamlit.components.v1 as components
 from dotenv import load_dotenv
 
-from ai_service import generate_summary, ask_video_question, generate_mindmap_code
+from ai_service import (
+    generate_summary,
+    ask_video_question,
+    generate_mindmap_code,
+)
 from config import get_groq_api_key
 from pdf_service import create_pdf
 from transcript_service import extract_video_id, get_transcript
+
 
 load_dotenv()
 
@@ -30,7 +37,7 @@ def safe_get_api_key() -> str:
 
 active_api_key = safe_get_api_key()
 
-# Persistent state
+
 DEFAULTS = {
     "url_input_box": "",
     "chat_history": [],
@@ -41,13 +48,19 @@ DEFAULTS = {
     "total_words": 0,
     "time_saved": 0,
     "mindmap": None,
+    "transcript_source": "",
 }
+
 for key, value in DEFAULTS.items():
     if key not in st.session_state:
-        st.session_state[key] = value.copy() if isinstance(value, list) else value
+        st.session_state[key] = (
+            value.copy() if isinstance(value, list) else value
+        )
+
 
 with st.sidebar:
     st.markdown("### 🛠️ Study Controls")
+
     summary_mode = st.selectbox(
         "Output Format:",
         [
@@ -60,8 +73,13 @@ with st.sidebar:
     )
 
     col_s1, col_s2 = st.columns(2)
+
     with col_s1:
-        detail_level = st.selectbox("Depth:", ["Standard", "Concise", "In-Depth"])
+        detail_level = st.selectbox(
+            "Depth:",
+            ["Standard", "Concise", "In-Depth"],
+        )
+
     with col_s2:
         output_lang = st.selectbox(
             "Language:",
@@ -70,15 +88,23 @@ with st.sidebar:
 
     st.markdown("---")
     st.caption("🔒 System secured via Cloud Secret Management.")
+
     if not active_api_key:
         st.warning("GROQ_API_KEY is not configured.")
 
+
 st.title("⚡ AI YouTube Lecture Digest")
-st.caption("Convert video lectures into structured notes, mind maps, and searchable subtitles.")
+st.caption(
+    "Convert video lectures into structured notes, mind maps, "
+    "and searchable subtitles."
+)
+
 
 col_lbl, c1, c2, c3 = st.columns([1.5, 2, 2, 2])
+
 with col_lbl:
     st.markdown("**Sample Lectures:**")
+
 with c1:
     st.button(
         "🧠 Neural Networks",
@@ -86,6 +112,7 @@ with c1:
         on_click=set_url,
         args=("https://www.youtube.com/watch?v=aircAruvnKk",),
     )
+
 with c2:
     st.button(
         "🐍 Python in 100s",
@@ -93,6 +120,7 @@ with c2:
         on_click=set_url,
         args=("https://www.youtube.com/watch?v=dhgEAm8384U",),
     )
+
 with c3:
     st.button(
         "🌐 Operating Systems",
@@ -101,11 +129,13 @@ with c3:
         args=("https://www.youtube.com/watch?v=26QPDBe-NB8",),
     )
 
+
 st.text_input(
     "Enter YouTube Video URL:",
     key="url_input_box",
     placeholder="https://www.youtube.com/watch?v=aircAruvnKk",
 )
+
 
 with st.expander("📋 Direct Text / Transcript Input (Optional)"):
     direct_transcript_text = st.text_area(
@@ -114,7 +144,9 @@ with st.expander("📋 Direct Text / Transcript Input (Optional)"):
         key="direct_text_input",
     )
 
+
 col_btn, _ = st.columns([1.5, 4])
+
 with col_btn:
     generate_clicked = st.button(
         "🚀 Process & Generate",
@@ -122,39 +154,69 @@ with col_btn:
         use_container_width=True,
     )
 
+
 if generate_clicked:
     target_url = st.session_state.get("url_input_box", "").strip()
     direct_text = (direct_transcript_text or "").strip()
 
     if not target_url and not direct_text:
         st.error("Please enter a YouTube URL or paste transcript text.")
+
+    elif target_url and direct_text:
+        st.error(
+            "Please use only one input method at a time. "
+            "Either enter a YouTube URL or paste transcript text."
+        )
+
     elif not active_api_key:
-        st.error("GROQ_API_KEY is not configured. Add it to Streamlit Secrets and restart the app.")
+        st.error(
+            "GROQ_API_KEY is not configured. "
+            "Add it to Streamlit Secrets and restart the app."
+        )
+
     else:
-        video_id = extract_video_id(target_url) if target_url else "direct_text"
+        video_id = (
+            extract_video_id(target_url)
+            if target_url
+            else "direct_text"
+        )
 
         if target_url and not video_id:
             st.error(
                 "Invalid YouTube URL. Use a link such as "
                 "https://www.youtube.com/watch?v=aircAruvnKk"
             )
+
         else:
             try:
                 if direct_text:
                     raw_text = direct_text
+                    source_label = "Pasted transcript / lecture notes"
+
                     segments = [
-                        {"timestamp": "00:00", "text": line.strip()}
+                        {
+                            "timestamp": "00:00",
+                            "text": line.strip(),
+                        }
                         for line in direct_text.splitlines()
                         if line.strip()
                     ]
-                else:
-                    with st.spinner("Retrieving YouTube captions..."):
-                        raw_text, segments = get_transcript(video_id, active_api_key)
 
-                if not raw_text.strip():
+                else:
+                    source_label = "Live YouTube captions"
+
+                    with st.spinner("Retrieving YouTube captions..."):
+                        raw_text, segments = get_transcript(
+                            video_id,
+                            active_api_key,
+                        )
+
+                if not raw_text or not raw_text.strip():
                     raise ValueError("No transcript text was returned.")
 
-                with st.spinner(f"Generating {summary_mode} in {output_lang}..."):
+                with st.spinner(
+                    f"Generating {summary_mode} in {output_lang}..."
+                ):
                     notes = generate_summary(
                         raw_text,
                         summary_mode,
@@ -165,9 +227,15 @@ if generate_clicked:
 
                 total_words = len(raw_text.split())
                 summary_words = len(notes.split())
-                read_time = max(1, round(total_words / 130))
-                time_saved = max(1, round(read_time - (summary_words / 200)))
 
+                read_time = max(1, round(total_words / 130))
+                time_saved = max(
+                    1,
+                    round(read_time - (summary_words / 200)),
+                )
+
+                # Save the new result only after transcript and AI generation
+                # have both completed successfully.
                 st.session_state["summary"] = notes
                 st.session_state["raw_text"] = raw_text
                 st.session_state["video_id"] = video_id
@@ -176,21 +244,40 @@ if generate_clicked:
                 st.session_state["time_saved"] = time_saved
                 st.session_state["chat_history"] = []
                 st.session_state["mindmap"] = None
+                st.session_state["transcript_source"] = source_label
 
-                
                 st.success("Study assets generated successfully!")
 
             except Exception as exc:
                 st.error(str(exc))
 
+
 if st.session_state.get("summary"):
     st.markdown("---")
+
+    st.caption(
+        f"Transcript source: {st.session_state.get('transcript_source', 'Unknown')}"
+    )
+
     m1, m2, m3 = st.columns(3)
-    m1.metric("Words Transcribed", f"{st.session_state.get('total_words', 0):,}")
-    m2.metric("Estimated Time Saved", f"~{st.session_state.get('time_saved', 0)} mins")
-    m3.metric("Subtitle Blocks", len(st.session_state.get("segments", [])))
+
+    m1.metric(
+        "Words Transcribed",
+        f"{st.session_state.get('total_words', 0):,}",
+    )
+
+    m2.metric(
+        "Estimated Time Saved",
+        f"~{st.session_state.get('time_saved', 0)} mins",
+    )
+
+    m3.metric(
+        "Subtitle Blocks",
+        len(st.session_state.get("segments", [])),
+    )
 
     st.markdown("<br>", unsafe_allow_html=True)
+
     left_col, right_col = st.columns([3, 2], gap="large")
 
     with left_col:
@@ -206,7 +293,9 @@ if st.session_state.get("summary"):
         with tab_notes:
             st.markdown(st.session_state["summary"])
             st.markdown("---")
+
             d1, d2 = st.columns(2)
+
             with d1:
                 st.download_button(
                     "📥 Download Markdown (.md)",
@@ -215,9 +304,13 @@ if st.session_state.get("summary"):
                     mime="text/markdown",
                     use_container_width=True,
                 )
+
             with d2:
                 try:
-                    pdf_bytes = create_pdf(st.session_state["summary"])
+                    pdf_bytes = create_pdf(
+                        st.session_state["summary"]
+                    )
+
                     st.download_button(
                         "📄 Download PDF (.pdf)",
                         data=pdf_bytes,
@@ -225,91 +318,145 @@ if st.session_state.get("summary"):
                         mime="application/pdf",
                         use_container_width=True,
                     )
+
                 except Exception as exc:
-                    st.caption(f"PDF export unavailable for this output: {exc}")
+                    st.caption(
+                        f"PDF export unavailable for this output: {exc}"
+                    )
 
         with tab_chat:
             st.subheader("💬 Ask Questions About the Lecture")
+
             for msg in st.session_state["chat_history"]:
                 with st.chat_message(msg["role"]):
                     st.markdown(msg["content"])
 
-            user_q = st.chat_input("Ask a doubt about this lecture...")
+            user_q = st.chat_input(
+                "Ask a doubt about this lecture..."
+            )
+
             if user_q:
                 previous_history = st.session_state["chat_history"][:]
+
                 st.session_state["chat_history"].append(
                     {"role": "user", "content": user_q}
                 )
+
                 with st.chat_message("user"):
                     st.markdown(user_q)
 
                 with st.chat_message("assistant"):
                     try:
-                        with st.spinner("Consulting lecture transcript..."):
+                        with st.spinner(
+                            "Consulting lecture transcript..."
+                        ):
                             answer = ask_video_question(
                                 st.session_state["raw_text"],
                                 user_q,
                                 previous_history,
                                 active_api_key,
                             )
+
                         st.markdown(answer)
+
                         st.session_state["chat_history"].append(
-                            {"role": "assistant", "content": answer}
+                            {
+                                "role": "assistant",
+                                "content": answer,
+                            }
                         )
+
                     except Exception as exc:
                         st.error(str(exc))
-                        # Do not keep a failed question as if it had been answered.
                         st.session_state["chat_history"] = previous_history
 
         with tab_mindmap:
             st.subheader("🗺️ Hierarchical Mind Map")
+
             if st.button("Generate Visual Map"):
                 try:
-                    with st.spinner("Generating flowchart structure..."):
-                        st.session_state["mindmap"] = generate_mindmap_code(
-                            st.session_state["raw_text"], active_api_key
+                    with st.spinner(
+                        "Generating flowchart structure..."
+                    ):
+                        st.session_state["mindmap"] = (
+                            generate_mindmap_code(
+                                st.session_state["raw_text"],
+                                active_api_key,
+                            )
                         )
+
                 except Exception as exc:
                     st.error(str(exc))
 
             if st.session_state.get("mindmap"):
+                # Escape model output before inserting it into HTML.
+                safe_mindmap = html.escape(
+                    st.session_state["mindmap"],
+                    quote=False,
+                )
+
                 mermaid_html = f"""
                 <div class="mermaid" style="background-color: transparent;">
-                    {st.session_state['mindmap']}
+                    {safe_mindmap}
                 </div>
+
                 <script type="module">
-                    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+                    import mermaid from
+                    'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+
                     mermaid.initialize({{
                         startOnLoad: true,
-                        securityLevel: 'loose'
+                        securityLevel: 'strict'
                     }});
                 </script>
                 """
-                components.html(mermaid_html, height=480, scrolling=True)
+
+                components.html(
+                    mermaid_html,
+                    height=480,
+                    scrolling=True,
+                )
 
         with tab_transcript:
             st.subheader("📜 Searchable Subtitles")
+
             search_term = st.text_input(
                 "🔍 Filter keywords:",
                 placeholder="e.g., gradient descent",
                 key="subtitle_search",
             )
+
             filtered = [
                 segment
                 for segment in st.session_state["segments"]
-                if not search_term
-                or search_term.lower() in segment["text"].lower()
+                if (
+                    not search_term
+                    or search_term.lower() in segment["text"].lower()
+                )
             ]
-            st.caption(f"Showing {len(filtered)} matching segments")
+
+            st.caption(
+                f"Showing {len(filtered)} matching segments"
+            )
+
             for segment in filtered[:120]:
                 st.markdown(
                     f"**`{segment['timestamp']}`** : {segment['text']}"
                 )
 
+            if len(filtered) > 120:
+                st.caption(
+                    "Only the first 120 matching segments are displayed."
+                )
+
     with right_col:
         st.subheader("📺 Video Player")
+
         current_video_id = st.session_state.get("video_id", "")
+
         if current_video_id and current_video_id != "direct_text":
-            st.video(f"https://www.youtube.com/watch?v={current_video_id}")
+            st.video(
+                f"https://www.youtube.com/watch?v={current_video_id}"
+            )
         else:
             st.info("Direct text input mode active.")
