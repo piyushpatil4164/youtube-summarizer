@@ -9,10 +9,9 @@ load_dotenv()
 def get_secret(name: str, default: str = "") -> str:
     """Read a value from Streamlit Secrets first, then environment variables."""
     try:
-        if name in st.secrets:
-            value = st.secrets[name]
-            if value is not None:
-                return str(value).strip()
+        value = st.secrets.get(name)
+        if value is not None and str(value).strip():
+            return str(value).strip()
     except Exception:
         pass
 
@@ -22,9 +21,20 @@ def get_secret(name: str, default: str = "") -> str:
 def get_groq_api_key() -> str:
     key = get_secret("GROQ_API_KEY")
     if not key:
-        raise ValueError("System configuration error: GROQ_API_KEY is not configured.")
+        raise ValueError(
+            "GROQ_API_KEY is not configured. Add it in Streamlit Secrets."
+        )
     return key
 
 
 def get_youtube_proxy_url() -> str:
-    return get_secret("YOUTUBE_PROXY_URL") or get_secret("YOUTUBE_HTTP_PROXY")
+    """
+    Optional HTTP/HTTPS proxy URL for YouTube requests.
+
+    Example:
+    YOUTUBE_PROXY_URL = "http://username:password@proxy-host:port"
+    """
+    return (
+        get_secret("YOUTUBE_PROXY_URL")
+        or get_secret("YOUTUBE_HTTP_PROXY")
+    )
