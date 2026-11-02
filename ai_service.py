@@ -594,23 +594,28 @@ def generate_mindmap_code(transcript_text, api_key):
         {
             "role": "system",
             "content": """
-You create educational concept mind maps using Mermaid.
+Create a concept mind map from the lecture transcript.
 
-Return ONLY valid Mermaid flowchart code.
-Start with graph TD.
-Do not use Markdown code fences.
-Use short node labels.
-Connect the main topic to important concepts.
+Return ONLY valid JSON, with exactly this structure:
+{
+  "nodes": ["Main topic", "Concept 1", "Concept 2"],
+  "edges": [[0, 1], [0, 2]]
+}
+
+Rules:
+- Include 5 to 15 short node labels.
+- The first node is the main topic.
+- Each edge is a pair of node indexes, starting at 0.
+- Use only indexes that exist in nodes.
+- Do not include Markdown fences or text outside the JSON.
 """,
         },
         {
             "role": "user",
-            "content": f"""
-Create a clear concept mind map from this lecture.
-
-TRANSCRIPT:
-{str(transcript_text)[:4000]}
-""",
+            "content": (
+                "Create the mind map from this lecture transcript:\n\n"
+                + str(transcript_text)[:4000]
+            ),
         },
     ]
 
@@ -621,22 +626,48 @@ TRANSCRIPT:
         temperature=0.2,
     )
 
-    result = re.sub(
-        r"^```(?:mermaid)?\s*",
-        "",
-        result.strip(),
-        flags=re.IGNORECASE,
-    )
+    # Accept a fenced JSON response if the model adds fences despite instructions.
+    result = re.sub(r"^```(?:json)?\s*", "", result.strip(), flags=re.IGNORECASE)
+    result = re.sub(r"\s*```$", "", result.strip())
 
-    result = re.sub(
-        r"\s*```$",
-        "",
-        result.strip(),
-    )
-
-    if not result.strip().startswith("graph"):
+    try:
+        data = json.loads(result)
+    except json.JSONDecodeError as exc:
         raise RuntimeError(
-            "The AI returned invalid mind map code. Please try again."
-        )
+            "The AI returned invalid mind map data. Please generate the map again."
+        ) from exc
 
-    return result.strip()
+    nodes = data.get("nodes")
+    edges = data.get("edges")
+
+    if not isinstance(nodes, list) or not nodes:
+        raise RuntimeError("The AI returned a mind map with no concepts.")
+
+    # Keep the diagram compact and limit text that could disrupt Mermaid syntax.
+    clean_nodes = []
+    for label in nodes[:15]:
+        label = str(label).replace('"', "'").replace("\\", " ").replace("\n", " ").strip()
+        label = " ".join(label.split())[:90]
+        clean_nodes.append(label or "Concept")
+
+    lines = ["graph TD"]
+    for index, label in enumerate(clean_nodes):
+        lines.append(f'    N{index}["{label}"]')
+
+    valid_edge_count = 0
+    if isinstance(edges, list):
+        for edge in edges:
+            if (
+                isinstance(edge, list)
+                and len(edge) == 2
+                and all(isinstance(i, int) for i in edge)
+                and all(0 <= i < len(clean_nodes) for i in edge)
+            ):
+                lines.append(f"    N{edge[0]} --> N{edge[1]}")
+                valid_edge_count += 1
+
+    if not valid_edge_count and len(clean_nodes) > 1:
+        # Keep the map connected if the model omitted or malformed its edges.
+        lines.extend(f"    N{i} --> N{i + 1}" for i in range(len(clean_nodes) - 1))
+
+    return "\n".join(lines)
