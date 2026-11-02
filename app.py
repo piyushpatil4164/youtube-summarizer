@@ -118,7 +118,7 @@ with c2:
         "🐍 Python in 100s",
         use_container_width=True,
         on_click=set_url,
-        args=("https://www.youtube.com/watch?v=dhgEAm8384U",),
+        args=("https://www.youtube.com/watch?v=x7X9w_GIm1s",),
     )
 
 with c3:
