@@ -1,3 +1,4 @@
+
 import re
 from groq import Groq
 
@@ -15,24 +16,24 @@ PREFERRED_MODELS = [
 
 FALLBACK_MODELS = PREFERRED_MODELS.copy()
 
+# Conservative limits to reduce context-length errors.
+CHUNK_SIZE = 2500
+SUMMARY_OUTPUT_TOKENS = 1200
+REDUCE_OUTPUT_TOKENS = 1200
+
 
 # ============================================================
 # MODEL DISCOVERY
 # ============================================================
 
 def _model_candidates(client):
-    """
-    Return available models in the preferred order.
-    If model discovery fails, use the configured fallback list.
-    """
     try:
         available_models = {
             model.id for model in client.models.list().data
         }
 
         candidates = [
-            model
-            for model in PREFERRED_MODELS
+            model for model in PREFERRED_MODELS
             if model in available_models
         ]
 
@@ -52,13 +53,6 @@ def call_groq_completion(
     max_tokens=1500,
     temperature=0.25
 ):
-    """
-    Try each available model in order.
-
-    A rate limit on one model will not stop attempts on
-    the remaining models.
-    """
-
     candidates = _model_candidates(client)
     errors = []
 
@@ -70,13 +64,11 @@ def call_groq_completion(
                 "temperature": temperature,
             }
 
-            # GPT-OSS models use max_completion_tokens.
             if model.startswith("openai/gpt-oss"):
                 request_options["max_completion_tokens"] = max_tokens
                 request_options["reasoning_effort"] = "low"
 
             elif model == "allam-2-7b":
-                # Allam-2-7B accepts at most 4096 output tokens.
                 request_options["max_tokens"] = min(max_tokens, 4096)
 
             else:
@@ -95,74 +87,56 @@ def call_groq_completion(
             if content and content.strip():
                 return content.strip()
 
-            errors.append(f"{model}: Model returned empty content")
+            errors.append(f"{model}: Empty content")
 
         except Exception as error:
             error_text = str(error)
             error_lower = error_text.lower()
             status_code = getattr(error, "status_code", None)
-            error_code = str(getattr(error, "code", "") or "").lower()
 
-            # A rate limit on one model should not prevent trying the next.
             if (
                 status_code == 429
-                or error_code in {"rate_limit_exceeded", "rate_limit"}
                 or "rate_limit" in error_lower
                 or "rate limit" in error_lower
             ):
-                errors.append(
-                    f"{model}: Rate limit reached. Trying next model."
-                )
+                errors.append(f"{model}: Rate limit reached")
                 continue
 
-            # Skip models that are no longer available or enabled.
             if (
                 status_code == 404
-                or error_code in {"model_not_found", "model_decommissioned"}
                 or "model_not_found" in error_lower
                 or "model_not_available" in error_lower
-                or "model is not available" in error_lower
             ):
-                errors.append(f"{model}: Model unavailable. Trying next model.")
+                errors.append(f"{model}: Model unavailable")
                 continue
 
-            # Skip a model when it rejects this request for a token/context cap.
-            # Other 400 errors are likely request bugs and should be surfaced.
-            if status_code == 400 and any(
-                term in error_lower
-                for term in (
-                    "context_length_exceeded",
-                    "maximum context length",
+            if (
+                status_code == 400
+                and any(term in error_lower for term in (
+                    "context",
+                    "reduce the length",
+                    "messages or completion",
                     "max_tokens",
-                    "max_completion_tokens",
                     "token limit",
-                    "context_window",
-                )
+                    "max_completion_tokens",
+                ))
             ):
                 errors.append(
-                    f"{model}: Request exceeds model limits. Trying next model."
+                    f"{model}: Request exceeded model limits"
                 )
                 continue
 
-            # Temporary provider failures may be model-specific; try the next.
             if status_code is not None and status_code >= 500:
-                errors.append(
-                    f"{model}: Groq server error ({status_code}). Trying next model."
-                )
+                errors.append(f"{model}: Server error {status_code}")
                 continue
 
-            # Do not hide authentication, connection, or other errors.
             raise RuntimeError(
                 f"Groq request failed with {model}: {error_text}"
             ) from error
 
-    details = "\n".join(errors)
-
     raise RuntimeError(
         "All configured Groq models failed.\n\n"
-        "Possible reasons include exhausted rate limits or "
-        "unavailable models.\n\n"
-        f"Details:\n{details}"
+        + "\n".join(errors)
     )
 
 
@@ -170,12 +144,7 @@ def call_groq_completion(
 # TEXT CHUNKING
 # ============================================================
 
-def chunk_text(text, max_chars=7000):
-    """
-    Split long transcripts into smaller chunks without
-    intentionally dropping transcript content.
-    """
-
+def chunk_text(text, max_chars=CHUNK_SIZE):
     text = str(text).strip()
 
     if not text:
@@ -189,7 +158,6 @@ def chunk_text(text, max_chars=7000):
 
         if end < len(text):
             split_at = text.rfind(" ", start, end)
-
             if split_at > start:
                 end = split_at
 
@@ -220,10 +188,7 @@ def _language_instruction(language):
         "German": "Write entirely in German.",
     }
 
-    return instructions.get(
-        language,
-        "Write in clear English."
-    )
+    return instructions.get(language, "Write in clear English.")
 
 
 # ============================================================
@@ -268,8 +233,6 @@ Include:
 - Key takeaways
 - Practical steps or applications
 - Important conclusions
-
-Keep the points clear and useful.
 """,
 
         "Practice Quiz & Flashcards": """
@@ -282,7 +245,7 @@ Include:
 - Flashcards with questions and answers
 - A final revision section
 
-Make sure the questions are based on the transcript.
+Base questions on the transcript.
 """,
 
         "Formula & Keyword Cheat Sheet": """
@@ -296,7 +259,7 @@ Include:
 - Short explanations
 - Important relationships between concepts
 
-Do not invent formulas that are not supported by the transcript.
+Do not invent formulas.
 """,
     }
 
@@ -313,13 +276,13 @@ Do not invent formulas that are not supported by the transcript.
 def _detail_instruction(detail_level):
     instructions = {
         "Concise": (
-            "Keep the response short and focus only on essential information."
+            "Keep the response short and focus on essential information."
         ),
         "Standard": (
             "Provide balanced explanations with useful details."
         ),
         "In-Depth": (
-            "Provide comprehensive explanations, examples and important details."
+            "Provide comprehensive explanations and important details."
         ),
     }
 
@@ -330,7 +293,7 @@ def _detail_instruction(detail_level):
 
 
 # ============================================================
-# SUMMARIZE INDIVIDUAL TRANSCRIPT CHUNK
+# SUMMARIZE ONE TRANSCRIPT CHUNK
 # ============================================================
 
 def _summarize_chunk(
@@ -348,13 +311,13 @@ def _summarize_chunk(
             "content": (
                 "You are an expert educational assistant. "
                 "Analyze lecture transcripts accurately. "
-                "Do not invent facts or information."
+                "Do not invent facts."
             ),
         },
         {
             "role": "user",
             "content": f"""
-Analyze part {chunk_number} of {total_chunks} of a lecture transcript.
+Analyze part {chunk_number} of {total_chunks}.
 
 Output format:
 {_mode_prompt(mode)}
@@ -365,11 +328,8 @@ Language:
 Detail:
 {_detail_instruction(detail_level)}
 
-Important:
-- Preserve important information.
-- Do not invent facts.
-- Identify key concepts and explanations.
-- This is one part of a larger transcript.
+Preserve important concepts and explanations.
+This is one part of a larger lecture.
 
 TRANSCRIPT:
 {chunk}
@@ -380,16 +340,16 @@ TRANSCRIPT:
     return call_groq_completion(
         client,
         messages,
-        max_tokens=2500,
+        max_tokens=SUMMARY_OUTPUT_TOKENS,
         temperature=0.25,
     )
 
 
 # ============================================================
-# REDUCE CHUNK SUMMARIES
+# REDUCE A SMALL GROUP OF SUMMARIES
 # ============================================================
 
-def _reduce_summaries(
+def _reduce_batch(
     client,
     summaries,
     mode,
@@ -403,13 +363,13 @@ def _reduce_summaries(
             "role": "system",
             "content": (
                 "You are an expert educational editor. "
-                "Combine lecture notes without losing important information."
+                "Combine lecture notes accurately and concisely."
             ),
         },
         {
             "role": "user",
             "content": f"""
-Combine the following partial lecture notes into one coherent document.
+Combine these partial lecture notes.
 
 Output format:
 {_mode_prompt(mode)}
@@ -424,7 +384,8 @@ Requirements:
 - Remove repeated information.
 - Preserve important concepts.
 - Organize information logically.
-- Do not introduce unsupported facts.
+- Do not invent facts.
+- Keep the result concise but useful.
 
 PARTIAL NOTES:
 {combined}
@@ -435,15 +396,57 @@ PARTIAL NOTES:
     return call_groq_completion(
         client,
         messages,
-        max_tokens=5000,
+        max_tokens=REDUCE_OUTPUT_TOKENS,
         temperature=0.25,
     )
 
 
 # ============================================================
-# GENERATE FINAL SUMMARY
+# HIERARCHICAL SUMMARY REDUCTION
 # ============================================================
 
+def _reduce_summaries(
+    client,
+    summaries,
+    mode,
+    language,
+    detail_level
+):
+    if not summaries:
+        raise ValueError("No summaries available to combine.")
+
+    current = list(summaries)
+
+    # Combine only two summaries per request.
+    # Repeat until one final summary remains.
+    while len(current) > 1:
+        next_level = []
+
+        for index in range(0, len(current), 2):
+            batch = current[index:index + 2]
+
+            if len(batch) == 1:
+                next_level.append(batch[0])
+                continue
+
+            result = _reduce_batch(
+                client=client,
+                summaries=batch,
+                mode=mode,
+                language=language,
+                detail_level=detail_level,
+            )
+
+            next_level.append(result)
+
+        current = next_level
+
+    return current[0]
+
+
+# ============================================================
+# GENERATE FINAL SUMMARY
+# ============================================================
 
 def generate_summary(
     text,
@@ -460,10 +463,14 @@ def generate_summary(
         raise ValueError("Groq API key is missing.")
 
     client = Groq(api_key=api_key)
-    chunks = chunk_text(text, max_chars=3000)
+
+    chunks = chunk_text(
+        text,
+        max_chars=CHUNK_SIZE
+    )
 
     if not chunks:
-        raise ValueError("Could not split the transcript into text.")
+        raise ValueError("Could not split transcript into text.")
 
     partial_summaries = []
 
@@ -490,7 +497,7 @@ def generate_summary(
         return partial_summaries[0]
 
     if progress_callback:
-        progress_callback("Combining all lecture notes...")
+        progress_callback("Combining lecture notes in smaller groups...")
 
     return _reduce_summaries(
         client=client,
@@ -499,7 +506,6 @@ def generate_summary(
         language=language,
         detail_level=detail_level,
     )
-
 
 
 # ============================================================
@@ -520,7 +526,7 @@ def ask_video_question(
 
     client = Groq(api_key=api_key)
 
-    transcript_context = str(transcript_text or "")[:12000]
+    transcript_context = str(transcript_text or "")[:6000]
 
     messages = [
         {
@@ -530,8 +536,7 @@ You are an educational assistant answering questions
 about a YouTube lecture.
 
 Use the transcript as your main source.
-If the answer is not available in the transcript,
-clearly say so instead of inventing information.
+If the answer is not available, say so.
 
 TRANSCRIPT:
 {transcript_context}
@@ -539,7 +544,6 @@ TRANSCRIPT:
         }
     ]
 
-    # Support common chat history formats.
     for item in (chat_history or [])[-6:]:
         if isinstance(item, dict):
             role = item.get("role")
@@ -548,7 +552,7 @@ TRANSCRIPT:
             if role in ("user", "assistant") and content:
                 messages.append({
                     "role": role,
-                    "content": str(content),
+                    "content": str(content)[:1500],
                 })
 
         elif isinstance(item, (list, tuple)) and len(item) >= 2:
@@ -557,7 +561,7 @@ TRANSCRIPT:
             if role in ("user", "assistant") and content:
                 messages.append({
                     "role": role,
-                    "content": str(content),
+                    "content": str(content)[:1500],
                 })
 
     messages.append({
@@ -568,7 +572,7 @@ TRANSCRIPT:
     return call_groq_completion(
         client,
         messages,
-        max_tokens=1500,
+        max_tokens=1200,
         temperature=0.3,
     )
 
@@ -596,16 +600,16 @@ Return ONLY valid Mermaid flowchart code.
 Start with graph TD.
 Do not use Markdown code fences.
 Use short node labels.
-Connect the main topic to important concepts and subtopics.
+Connect the main topic to important concepts.
 """,
         },
         {
             "role": "user",
             "content": f"""
-Create a clear concept mind map from this lecture transcript.
+Create a clear concept mind map from this lecture.
 
 TRANSCRIPT:
-{str(transcript_text)[:8000]}
+{str(transcript_text)[:4000]}
 """,
         },
     ]
@@ -613,11 +617,10 @@ TRANSCRIPT:
     result = call_groq_completion(
         client,
         messages,
-        max_tokens=1800,
+        max_tokens=1200,
         temperature=0.2,
     )
 
-    # Remove accidental Markdown code fences.
     result = re.sub(
         r"^```(?:mermaid)?\s*",
         "",
