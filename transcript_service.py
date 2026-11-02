@@ -1,353 +1,280 @@
 
-import html
+import os
 import re
-from urllib.parse import parse_qs, urlparse
+import time
+import requests
 
+from urllib.parse import urlparse, parse_qs
 from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api.proxies import GenericProxyConfig
-
-from config import get_youtube_proxy_url
 
 
-SUPPORTED_LANGUAGES = [
-    "en",
-    "en-US",
-    "en-GB",
-    "en-IN",
-    "hi",
-    "es",
-    "fr",
-    "de",
-]
+SUPADATA_URL = "https://api.supadata.ai/v1"
+REQUEST_TIMEOUT = 30
+MAX_POLL_ATTEMPTS = 20
 
-VIDEO_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
-YOUTUBE_HOSTS = {
-    "youtube.com",
-    "www.youtube.com",
-    "m.youtube.com",
-    "music.youtube.com",
-    "youtube-nocookie.com",
-    "www.youtube-nocookie.com",
-    "youtu.be",
-    "www.youtu.be",
-}
+# ============================================================
+# GET SUPADATA API KEY
+# ============================================================
+
+def get_supadata_api_key():
+    """
+    Read Supadata API key from Streamlit Secrets or .env.
+    """
+
+    key = os.getenv("SUPADATA_API_KEY")
+
+    if key:
+        return key.strip()
+
+    try:
+        import streamlit as st
+        key = st.secrets.get("SUPADATA_API_KEY", "")
+        if key:
+            return str(key).strip()
+    except Exception:
+        pass
+
+    return None
 
 
 # ============================================================
 # EXTRACT YOUTUBE VIDEO ID
 # ============================================================
 
-def extract_video_id(url: str) -> str | None:
-    """Extract an 11-character YouTube video ID."""
+def extract_video_id(url):
+    """
+    Extract YouTube video ID from common YouTube URL formats.
+    """
 
     if not url:
-        return None
+        raise ValueError("Please enter a YouTube URL.")
 
-    value = url.strip()
+    url = url.strip()
 
-    if VIDEO_ID_PATTERN.fullmatch(value):
-        return value
+    parsed = urlparse(url)
 
-    # Allow URLs pasted without https://
-    if "://" not in value:
-        value = "https://" + value
+    if parsed.hostname in ("youtu.be", "www.youtu.be"):
+        video_id = parsed.path.strip("/").split("/")[0]
 
-    try:
-        parsed = urlparse(value)
-        host = (parsed.hostname or "").lower()
-
-        if host not in YOUTUBE_HOSTS:
-            return None
-
-        path_parts = [
-            part for part in parsed.path.split("/") if part
-        ]
-
-        if host.endswith("youtu.be"):
-            video_id = path_parts[0] if path_parts else None
-
-        elif parsed.path.rstrip("/") == "/watch":
+    elif parsed.hostname and (
+        parsed.hostname.endswith("youtube.com")
+        or parsed.hostname.endswith("youtube-nocookie.com")
+    ):
+        if parsed.path == "/watch":
             video_id = parse_qs(parsed.query).get("v", [None])[0]
 
-        elif (
-            len(path_parts) >= 2
-            and path_parts[0] in {"embed", "shorts", "live", "v"}
-        ):
-            video_id = path_parts[1]
+        elif parsed.path.startswith(("/embed/", "/shorts/", "/live/")):
+            video_id = parsed.path.split("/")[2]
 
         else:
-            return None
-
-        if video_id and VIDEO_ID_PATTERN.fullmatch(video_id):
-            return video_id
-
-    except Exception:
-        return None
-
-    return None
-
-
-# ============================================================
-# FORMAT TIMESTAMP
-# ============================================================
-
-def format_timestamp(seconds: float) -> str:
-    """Convert seconds into MM:SS or HH:MM:SS."""
-
-    total = max(0, int(float(seconds or 0)))
-
-    hours, remainder = divmod(total, 3600)
-    minutes, secs = divmod(remainder, 60)
-
-    if hours:
-        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
-
-    return f"{minutes:02d}:{secs:02d}"
-
-
-# ============================================================
-# CREATE YOUTUBE TRANSCRIPT CLIENT
-# ============================================================
-
-def _create_youtube_api():
-    """Create the API client, optionally using a configured proxy."""
-
-    proxy_url = get_youtube_proxy_url()
-
-    if not proxy_url:
-        return YouTubeTranscriptApi()
-
-    proxy_config = GenericProxyConfig(
-        http_url=proxy_url,
-        https_url=proxy_url,
-    )
-
-    return YouTubeTranscriptApi(
-        proxy_config=proxy_config
-    )
-
-
-# ============================================================
-# CONVERT TRANSCRIPT INTO TEXT AND SEGMENTS
-# ============================================================
-
-def _convert_transcript(fetched_transcript):
-    """Convert fetched captions into plain text and timestamped segments."""
-
-    full_text = []
-    segments = []
-
-    for item in fetched_transcript:
-
-        if isinstance(item, dict):
-            raw_text = item.get("text", "")
-            start_seconds = item.get("start", 0)
-        else:
-            raw_text = getattr(item, "text", "")
-            start_seconds = getattr(item, "start", 0)
-
-        line = html.unescape(str(raw_text))
-        line = line.replace("\n", " ").strip()
-
-        if not line:
-            continue
-
-        full_text.append(line)
-
-        segments.append({
-            "timestamp": format_timestamp(start_seconds),
-            "text": line,
-        })
-
-    if not full_text:
-        raise ValueError(
-            "The selected YouTube transcript contains no readable text."
-        )
-
-    return " ".join(full_text), segments
-
-
-# ============================================================
-# PRIORITIZE AVAILABLE CAPTION TRACKS
-# ============================================================
-
-def _get_ordered_tracks(transcript_list):
-    """
-    Prefer supported languages.
-    Within each language, prefer manually created captions.
-    Try other available languages if preferred ones are missing.
-    """
-
-    tracks = list(transcript_list)
-
-    def sort_key(track):
-        language = getattr(track, "language_code", "")
-
-        is_generated = getattr(
-            track,
-            "is_generated",
-            False
-        )
-
-        try:
-            language_rank = SUPPORTED_LANGUAGES.index(language)
-        except ValueError:
-            language_rank = len(SUPPORTED_LANGUAGES)
-
-        return (
-            language_rank,
-            bool(is_generated),
-        )
-
-    return sorted(tracks, key=sort_key)
-
-
-# ============================================================
-# CLASSIFY YOUTUBE ERRORS
-# ============================================================
-
-def _friendly_error(exc, proxy_is_configured):
-    error_name = type(exc).__name__
-    error_detail = str(exc).strip()
-
-    if error_name in {"IpBlocked", "RequestBlocked"}:
-        message = (
-            "YouTube blocked the server's IP address while requesting "
-            "captions. This commonly happens on cloud hosting platforms."
-        )
-
-        if not proxy_is_configured:
-            message += (
-                "\n\nNo YOUTUBE_PROXY_URL is configured. "
-                "A compatible proxy may help, but it is not guaranteed."
-            )
-
-    elif error_name in {
-        "TranscriptsDisabled",
-        "CaptionsDisabled",
-    }:
-        message = (
-            "Captions are disabled for this YouTube video. "
-            "The transcript service cannot retrieve captions "
-            "that YouTube does not make available."
-        )
-
-    elif error_name == "NoTranscriptFound":
-        message = (
-            "No transcript was found for this video, "
-            "including the available language options."
-        )
-
-    elif error_name in {
-        "VideoUnavailable",
-        "AgeRestricted",
-    }:
-        message = (
-            "This video is unavailable to the transcript service "
-            "or has an access restriction."
-        )
+            video_id = None
 
     else:
-        message = (
-            f"Could not retrieve captions ({error_name})."
-        )
+        raise ValueError("Please enter a valid YouTube URL.")
 
-    if error_detail:
-        message += f"\n\nTechnical details: {error_detail}"
+    if not video_id or not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
+        raise ValueError("Could not identify a valid YouTube video ID.")
 
-    return message
+    return video_id
 
 
 # ============================================================
-# GET YOUTUBE TRANSCRIPT
+# CONVERT SUPADATA RESPONSE TO TEXT
 # ============================================================
 
-def get_transcript(video_id: str, api_key: str = ""):
+def _extract_transcript_text(data):
+    content = data.get("content")
+
+    if isinstance(content, str):
+        return content.strip()
+
+    if isinstance(content, list):
+        parts = []
+
+        for segment in content:
+            if isinstance(segment, dict):
+                text = segment.get("text", "")
+                if text:
+                    parts.append(str(text))
+
+        return " ".join(parts).strip()
+
+    return ""
+
+
+# ============================================================
+# SUPADATA TRANSCRIPT RETRIEVAL
+# ============================================================
+
+def get_supadata_transcript(video_id, api_key):
     """
-    Retrieve YouTube captions.
-
-    Returns:
-        tuple[str, list[dict]]:
-            Full transcript text and timestamped subtitle segments.
-
-    api_key is retained for compatibility with app.py.
-    It is not required by youtube-transcript-api.
+    Retrieve a YouTube transcript through Supadata.
+    Supports both immediate and asynchronous responses.
     """
 
-    if not video_id or not VIDEO_ID_PATTERN.fullmatch(video_id):
-        raise ValueError(
-            "Invalid YouTube video ID. Please enter a valid YouTube URL."
-        )
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
 
-    proxy_is_configured = bool(get_youtube_proxy_url())
+    headers = {
+        "x-api-key": api_key,
+        "Accept": "application/json",
+    }
 
-    try:
-        youtube_api = _create_youtube_api()
+    params = {
+        "url": video_url,
+        "text": "true",
+        "mode": "auto",
+    }
 
-        # Retrieve all available caption tracks.
-        transcript_list = youtube_api.list(video_id)
+    response = requests.get(
+        f"{SUPADATA_URL}/transcript",
+        headers=headers,
+        params=params,
+        timeout=REQUEST_TIMEOUT,
+    )
 
-    except Exception as exc:
-        message = _friendly_error(
-            exc,
-            proxy_is_configured
-        )
-
-        message += (
-            "\n\nYou can still use the app by pasting the lecture "
-            "transcript into the Direct Text / Transcript Input box."
-        )
-
-        raise RuntimeError(message) from exc
-
-    # Sort preferred languages first, then try other languages.
-    try:
-        tracks = _get_ordered_tracks(transcript_list)
-
-    except Exception as exc:
+    if response.status_code not in (200, 202):
         raise RuntimeError(
-            f"Could not read available caption tracks: {exc}"
-        ) from exc
+            f"Supadata returned HTTP {response.status_code}: "
+            f"{response.text[:500]}"
+        )
 
-    if not tracks:
+    data = response.json()
+
+    # Immediate transcript response
+    transcript = _extract_transcript_text(data)
+
+    if transcript:
+        return transcript
+
+    # Asynchronous response: poll the returned job ID
+    job_id = data.get("jobId")
+
+    if not job_id:
         raise RuntimeError(
-            "No caption tracks are available for this video. "
-            "Check whether subtitles are enabled on YouTube."
+            f"Supadata returned no transcript or job ID: {data}"
         )
 
-    fetch_errors = []
+    for attempt in range(MAX_POLL_ATTEMPTS):
+        time.sleep(3)
 
-    # Try every available track until one can be fetched.
-    for track in tracks:
-
-        language = getattr(
-            track,
-            "language_code",
-            "unknown"
+        job_response = requests.get(
+            f"{SUPADATA_URL}/transcript/{job_id}",
+            headers=headers,
+            timeout=REQUEST_TIMEOUT,
         )
 
+        if job_response.status_code != 200:
+            raise RuntimeError(
+                f"Supadata job polling failed: "
+                f"HTTP {job_response.status_code} "
+                f"{job_response.text[:300]}"
+            )
+
+        job_data = job_response.json()
+        status = job_data.get("status")
+
+        if status == "completed":
+            transcript = _extract_transcript_text(job_data)
+
+            if transcript:
+                return transcript
+
+            raise RuntimeError(
+                "Supadata completed the job but returned empty transcript."
+            )
+
+        if status == "failed":
+            raise RuntimeError(
+                f"Supadata transcript job failed: {job_data}"
+            )
+
+    raise TimeoutError(
+        "Supadata transcript processing took too long. "
+        "Please try again."
+    )
+
+
+# ============================================================
+# YOUTUBE-TRANSCRIPT-API FALLBACK
+# ============================================================
+
+def get_youtube_library_transcript(video_id):
+    """
+    Try the official youtube-transcript-api Python package.
+    This may still fail if the hosting IP is blocked.
+    """
+
+    transcript_api = YouTubeTranscriptApi()
+
+    fetched = transcript_api.fetch(video_id)
+
+    parts = []
+
+    for item in fetched:
+        if isinstance(item, dict):
+            text = item.get("text", "")
+        else:
+            text = getattr(item, "text", "")
+
+        if text:
+            parts.append(str(text))
+
+    transcript = " ".join(parts).strip()
+
+    if not transcript:
+        raise RuntimeError("YouTube returned an empty transcript.")
+
+    return transcript
+
+
+# ============================================================
+# MAIN TRANSCRIPT FUNCTION
+# ============================================================
+
+def get_transcript(video_id, api_key=None):
+    """
+    First try Supadata.
+    If unavailable or unsuccessful, try youtube-transcript-api.
+
+    The api_key parameter is retained for compatibility with app.py.
+    It is not used as a Supadata key.
+    """
+
+    errors = []
+
+    supadata_key = get_supadata_api_key()
+
+    if supadata_key:
         try:
-            fetched_transcript = track.fetch()
-
-            transcript_text, segments = _convert_transcript(
-                fetched_transcript
+            transcript = get_supadata_transcript(
+                video_id,
+                supadata_key,
             )
 
-            return transcript_text, segments
+            if transcript:
+                return transcript
 
-        except Exception as exc:
-            fetch_errors.append(
-                f"{language}: {type(exc).__name__}: {str(exc)}"
-            )
+        except Exception as error:
+            errors.append(f"Supadata: {error}")
 
-            continue
+    else:
+        errors.append(
+            "SUPADATA_API_KEY is not configured."
+        )
 
-    error_details = "\n".join(fetch_errors[:5])
+    try:
+        transcript = get_youtube_library_transcript(video_id)
+
+        if transcript:
+            return transcript
+
+    except Exception as error:
+        errors.append(f"YouTube Transcript API: {error}")
 
     raise RuntimeError(
-        "Caption tracks were found, but none could be downloaded.\n\n"
-        f"Technical details:\n{error_details}\n\n"
-        "You can still use the app by pasting the lecture transcript "
-        "into the Direct Text / Transcript Input box."
+        "Could not retrieve the YouTube transcript.\n\n"
+        + "\n\n".join(errors)
+        + "\n\nPlease check your Supadata API key or paste "
+        "the transcript into the Direct Text / Transcript Input box."
     )
