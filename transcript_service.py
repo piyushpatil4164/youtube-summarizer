@@ -232,13 +232,14 @@ def get_youtube_library_transcript(video_id):
 # MAIN TRANSCRIPT FUNCTION
 # ============================================================
 
+
 def get_transcript(video_id, api_key=None):
     """
-    First try Supadata.
-    If unavailable or unsuccessful, try youtube-transcript-api.
+    Retrieve transcript using Supadata first,
+    then youtube-transcript-api as fallback.
 
-    The api_key parameter is retained for compatibility with app.py.
-    It is not used as a Supadata key.
+    Returns:
+        transcript_text, transcript_source
     """
 
     errors = []
@@ -249,25 +250,23 @@ def get_transcript(video_id, api_key=None):
         try:
             transcript = get_supadata_transcript(
                 video_id,
-                supadata_key,
+                supadata_key
             )
 
             if transcript:
-                return transcript
+                return transcript, "Supadata"
 
         except Exception as error:
             errors.append(f"Supadata: {error}")
 
     else:
-        errors.append(
-            "SUPADATA_API_KEY is not configured."
-        )
+        errors.append("SUPADATA_API_KEY is not configured.")
 
     try:
         transcript = get_youtube_library_transcript(video_id)
 
         if transcript:
-            return transcript
+            return transcript, "YouTube Transcript API"
 
     except Exception as error:
         errors.append(f"YouTube Transcript API: {error}")
@@ -278,3 +277,4 @@ def get_transcript(video_id, api_key=None):
         + "\n\nPlease check your Supadata API key or paste "
         "the transcript into the Direct Text / Transcript Input box."
     )
+
