@@ -14,14 +14,10 @@ MAX_POLL_ATTEMPTS = 20
 
 
 # ============================================================
-# GET SUPADATA API KEY
+# API KEY
 # ============================================================
 
 def get_supadata_api_key():
-    """
-    Read Supadata API key from Streamlit Secrets or .env.
-    """
-
     key = os.getenv("SUPADATA_API_KEY")
 
     if key:
@@ -39,20 +35,14 @@ def get_supadata_api_key():
 
 
 # ============================================================
-# EXTRACT YOUTUBE VIDEO ID
+# EXTRACT VIDEO ID
 # ============================================================
 
 def extract_video_id(url):
-    """
-    Extract YouTube video ID from common YouTube URL formats.
-    """
-
     if not url:
         raise ValueError("Please enter a YouTube URL.")
 
-    url = url.strip()
-
-    parsed = urlparse(url)
+    parsed = urlparse(url.strip())
 
     if parsed.hostname in ("youtu.be", "www.youtu.be"):
         video_id = parsed.path.strip("/").split("/")[0]
@@ -65,182 +55,234 @@ def extract_video_id(url):
             video_id = parse_qs(parsed.query).get("v", [None])[0]
 
         elif parsed.path.startswith(("/embed/", "/shorts/", "/live/")):
-            video_id = parsed.path.split("/")[2]
+            parts = parsed.path.strip("/").split("/")
+            video_id = parts[1] if len(parts) > 1 else None
 
         else:
             video_id = None
-
     else:
-        raise ValueError("Please enter a valid YouTube URL.")
+        video_id = None
 
     if not video_id or not re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id):
-        raise ValueError("Could not identify a valid YouTube video ID.")
+        raise ValueError("Invalid YouTube video URL.")
 
     return video_id
 
 
 # ============================================================
-# CONVERT SUPADATA RESPONSE TO TEXT
+# TIMESTAMP FORMATTING
 # ============================================================
 
-def _extract_transcript_text(data):
-    content = data.get("content")
+def format_timestamp(seconds):
+    seconds = max(0, int(seconds))
+
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    remaining = seconds % 60
+
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{remaining:02d}"
+
+    return f"{minutes:02d}:{remaining:02d}"
+
+
+# ============================================================
+# NORMALIZE TRANSCRIPT SEGMENTS
+# ============================================================
+
+def normalize_segments(content):
+    """
+    Convert transcript content into:
+    [
+        {"timestamp": "00:00", "text": "..."},
+        ...
+    ]
+    """
+
+    segments = []
 
     if isinstance(content, str):
-        return content.strip()
+        if content.strip():
+            segments.append({
+                "timestamp": "00:00",
+                "text": content.strip()
+            })
 
-    if isinstance(content, list):
-        parts = []
+        return segments
 
-        for segment in content:
-            if isinstance(segment, dict):
-                text = segment.get("text", "")
-                if text:
-                    parts.append(str(text))
+    if not isinstance(content, list):
+        return segments
 
-        return " ".join(parts).strip()
+    for item in content:
+        if isinstance(item, str):
+            text = item.strip()
+            timestamp = "00:00"
 
-    return ""
+        elif isinstance(item, dict):
+            text = str(item.get("text", "")).strip()
+
+            if not text:
+                continue
+
+            # Supadata offset is generally in milliseconds.
+            if "offset" in item:
+                seconds = float(item["offset"]) / 1000
+
+            elif "start" in item:
+                seconds = float(item["start"])
+
+            elif "timestamp" in item:
+                timestamp = str(item["timestamp"])
+                segments.append({
+                    "timestamp": timestamp,
+                    "text": text
+                })
+                continue
+
+            else:
+                seconds = 0
+
+            timestamp = format_timestamp(seconds)
+
+        else:
+            continue
+
+        if text:
+            segments.append({
+                "timestamp": timestamp,
+                "text": text
+            })
+
+    return segments
 
 
 # ============================================================
-# SUPADATA TRANSCRIPT RETRIEVAL
+# SUPADATA TRANSCRIPT
 # ============================================================
 
 def get_supadata_transcript(video_id, api_key):
-    """
-    Retrieve a YouTube transcript through Supadata.
-    Supports both immediate and asynchronous responses.
-    """
 
     video_url = f"https://www.youtube.com/watch?v={video_id}"
 
     headers = {
         "x-api-key": api_key,
-        "Accept": "application/json",
+        "Accept": "application/json"
     }
 
+    # Do not request text-only output.
+    # We need the original timed segments for subtitles.
     params = {
         "url": video_url,
-        "text": "true",
-        "mode": "auto",
+        "mode": "auto"
     }
 
     response = requests.get(
         f"{SUPADATA_URL}/transcript",
         headers=headers,
         params=params,
-        timeout=REQUEST_TIMEOUT,
+        timeout=REQUEST_TIMEOUT
     )
 
     if response.status_code not in (200, 202):
         raise RuntimeError(
-            f"Supadata returned HTTP {response.status_code}: "
+            f"Supadata HTTP {response.status_code}: "
             f"{response.text[:500]}"
         )
 
     data = response.json()
 
-    # Immediate transcript response
-    transcript = _extract_transcript_text(data)
-
-    if transcript:
-        return transcript
-
-    # Asynchronous response: poll the returned job ID
     job_id = data.get("jobId")
 
-    if not job_id:
+    if job_id:
+        for _ in range(MAX_POLL_ATTEMPTS):
+            time.sleep(3)
+
+            job_response = requests.get(
+                f"{SUPADATA_URL}/transcript/{job_id}",
+                headers=headers,
+                timeout=REQUEST_TIMEOUT
+            )
+
+            if job_response.status_code != 200:
+                raise RuntimeError(
+                    f"Supadata polling failed: "
+                    f"{job_response.text[:300]}"
+                )
+
+            data = job_response.json()
+            status = data.get("status")
+
+            if status == "completed":
+                break
+
+            if status == "failed":
+                raise RuntimeError(
+                    f"Supadata job failed: {data}"
+                )
+        else:
+            raise TimeoutError(
+                "Supadata transcript processing timed out."
+            )
+
+    content = data.get("content", "")
+    segments = normalize_segments(content)
+
+    if not segments:
         raise RuntimeError(
-            f"Supadata returned no transcript or job ID: {data}"
+            "Supadata returned no usable transcript segments."
         )
 
-    for attempt in range(MAX_POLL_ATTEMPTS):
-        time.sleep(3)
-
-        job_response = requests.get(
-            f"{SUPADATA_URL}/transcript/{job_id}",
-            headers=headers,
-            timeout=REQUEST_TIMEOUT,
-        )
-
-        if job_response.status_code != 200:
-            raise RuntimeError(
-                f"Supadata job polling failed: "
-                f"HTTP {job_response.status_code} "
-                f"{job_response.text[:300]}"
-            )
-
-        job_data = job_response.json()
-        status = job_data.get("status")
-
-        if status == "completed":
-            transcript = _extract_transcript_text(job_data)
-
-            if transcript:
-                return transcript
-
-            raise RuntimeError(
-                "Supadata completed the job but returned empty transcript."
-            )
-
-        if status == "failed":
-            raise RuntimeError(
-                f"Supadata transcript job failed: {job_data}"
-            )
-
-    raise TimeoutError(
-        "Supadata transcript processing took too long. "
-        "Please try again."
+    full_text = " ".join(
+        segment["text"] for segment in segments
     )
+
+    return full_text, segments
 
 
 # ============================================================
-# YOUTUBE-TRANSCRIPT-API FALLBACK
+# YOUTUBE TRANSCRIPT API FALLBACK
 # ============================================================
 
 def get_youtube_library_transcript(video_id):
-    """
-    Try the official youtube-transcript-api Python package.
-    This may still fail if the hosting IP is blocked.
-    """
 
     transcript_api = YouTubeTranscriptApi()
-
     fetched = transcript_api.fetch(video_id)
 
-    parts = []
+    segments = []
 
     for item in fetched:
         if isinstance(item, dict):
             text = item.get("text", "")
+            start = item.get("start", 0)
         else:
             text = getattr(item, "text", "")
+            start = getattr(item, "start", 0)
+
+        text = str(text).strip()
 
         if text:
-            parts.append(str(text))
+            segments.append({
+                "timestamp": format_timestamp(start),
+                "text": text
+            })
 
-    transcript = " ".join(parts).strip()
+    if not segments:
+        raise RuntimeError(
+            "YouTube returned an empty transcript."
+        )
 
-    if not transcript:
-        raise RuntimeError("YouTube returned an empty transcript.")
+    full_text = " ".join(
+        segment["text"] for segment in segments
+    )
 
-    return transcript
+    return full_text, segments
 
 
 # ============================================================
-# MAIN TRANSCRIPT FUNCTION
+# MAIN FUNCTION
 # ============================================================
-
 
 def get_transcript(video_id, api_key=None):
-    """
-    Retrieve transcript using Supadata first,
-    then youtube-transcript-api as fallback.
-
-    Returns:
-        transcript_text, transcript_source
-    """
 
     errors = []
 
@@ -248,33 +290,30 @@ def get_transcript(video_id, api_key=None):
 
     if supadata_key:
         try:
-            transcript = get_supadata_transcript(
+            return get_supadata_transcript(
                 video_id,
                 supadata_key
             )
-
-            if transcript:
-                return transcript, "Supadata"
 
         except Exception as error:
             errors.append(f"Supadata: {error}")
 
     else:
-        errors.append("SUPADATA_API_KEY is not configured.")
+        errors.append(
+            "SUPADATA_API_KEY is not configured."
+        )
 
     try:
-        transcript = get_youtube_library_transcript(video_id)
-
-        if transcript:
-            return transcript, "YouTube Transcript API"
+        return get_youtube_library_transcript(video_id)
 
     except Exception as error:
-        errors.append(f"YouTube Transcript API: {error}")
+        errors.append(
+            f"YouTube Transcript API: {error}"
+        )
 
     raise RuntimeError(
-        "Could not retrieve the YouTube transcript.\n\n"
+        "Could not retrieve YouTube transcript.\n\n"
         + "\n\n".join(errors)
-        + "\n\nPlease check your Supadata API key or paste "
-        "the transcript into the Direct Text / Transcript Input box."
+        + "\n\nPlease check your Supadata API key "
+        "or paste the transcript manually."
     )
-
