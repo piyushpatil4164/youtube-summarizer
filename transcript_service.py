@@ -1,65 +1,71 @@
-"""Fast transcript retrieval for AI YouTube Lecture Digest.
+"""Fetch YouTube transcripts for AI YouTube Lecture Digest.
 
-Drop this module beside app.py. get_transcript(video_id, api_key) keeps the
-existing app contract: (full_text, [{"timestamp": ..., "text": ...}, ...]).
+Public interface retained for app.py:
+    extract_video_id(url) -> str
+    get_transcript(video_id, api_key) -> (full_text, timestamped_segments)
+
+Supadata is tried first (so cloud-hosted apps do not depend on direct YouTube
+caption requests). youtube-transcript-api is a fallback. SUPADATA_API_KEY is
+read from the process environment or Streamlit secrets; ``api_key`` remains in
+the function signature for compatibility and is not treated as a Supadata key.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import time
 from typing import Any
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
 
 import requests
 from youtube_transcript_api import YouTubeTranscriptApi
 
-SUPADATA_URL = "https://api.supadata.ai/v1"
-CONNECT_TIMEOUT = 3.05
-READ_TIMEOUT = 8
-MAX_SUPADATA_WAIT = 12.0
-POLL_INTERVALS = (0.5, 1.0, 2.0, 3.0, 3.0)
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    # Environment variables configured by Streamlit or the hosting platform
+    # work without python-dotenv; local .env loading needs that package.
+    pass
+
+SUPADATA_BASE_URL = "https://api.supadata.ai/v1"
+CONNECT_TIMEOUT_SECONDS = 5
+READ_TIMEOUT_SECONDS = 20
+# Supadata says AI transcript requests can take about 100 seconds.
+MAX_JOB_WAIT_SECONDS = 120
+POLL_INTERVAL_SECONDS = 1
+VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
 
 def extract_video_id(url: str) -> str:
-    """Extract and validate a YouTube video ID from a URL or ID."""
-
+    """Extract and validate a video ID from a YouTube URL or an ID itself."""
     value = str(url).strip()
-
     if not value:
         raise ValueError("Please enter a YouTube URL.")
-
-    # Accept a video ID directly.
-    if len(value) == 11 and all(
-        c.isalnum() or c in "-_" for c in value
-    ):
+    if VIDEO_ID_RE.fullmatch(value):
         return value
 
-    parsed = urlparse(
-        value if "://" in value else "https://" + value
-    )
-
-    host = parsed.netloc.lower().split(":")[0]
+    parsed = urlparse(value if "://" in value else "https://" + value)
+    host = (parsed.hostname or "").lower().rstrip(".")
     video_id = ""
 
-    if host in ("youtu.be", "www.youtu.be"):
-        video_id = parsed.path.strip("/").split("/")[0]
-
-    elif host.endswith("youtube.com"):
+    if host in {"youtu.be", "www.youtu.be"}:
+        pieces = parsed.path.strip("/").split("/")
+        video_id = pieces[0] if pieces else ""
+    elif host == "youtube.com" or host.endswith(".youtube.com"):
         if parsed.path == "/watch":
             video_id = parse_qs(parsed.query).get("v", [""])[0]
+        else:
+            parts = parsed.path.strip("/").split("/")
+            if len(parts) >= 2 and parts[0] in {"shorts", "embed", "live"}:
+                video_id = parts[1]
 
-        elif any(
-            part in parsed.path
-            for part in ("/shorts/", "/embed/", "/live/")
-        ):
-            video_id = parsed.path.rstrip("/").split("/")[-1]
-
-    if len(video_id) != 11 or not all(
-        c.isalnum() or c in "-_" for c in video_id
-    ):
+    if not VIDEO_ID_RE.fullmatch(video_id):
         raise ValueError("Invalid YouTube URL or video ID.")
-
     return video_id
+
 
 def _supadata_key() -> str | None:
     key = os.getenv("SUPADATA_API_KEY", "").strip()
@@ -68,12 +74,15 @@ def _supadata_key() -> str | None:
     try:
         import streamlit as st
 
-        return str(st.secrets.get("SUPADATA_API_KEY", "")).strip() or None
+        value = st.secrets.get("SUPADATA_API_KEY", "")
+        return str(value).strip() or None
     except Exception:
+        # Streamlit may be absent or secrets may not be configured locally.
         return None
 
 
 def format_timestamp(seconds: Any) -> str:
+    """Format seconds as MM:SS or HH:MM:SS."""
     try:
         total = max(0, int(float(seconds)))
     except (TypeError, ValueError, OverflowError):
@@ -83,117 +92,171 @@ def format_timestamp(seconds: Any) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d}" if hours else f"{minutes:02d}:{secs:02d}"
 
 
-def _segments(content: Any) -> list[dict[str, str]]:
+def _to_segments(content: Any) -> list[dict[str, str]]:
+    """Normalize Supadata or youtube-transcript-api content to app format."""
     if isinstance(content, dict):
-        # Some responses wrap timed entries in a nested data/result object.
         content = content.get("content", content.get("segments", content.get("transcript", [])))
     if isinstance(content, str):
-        content = [{"text": content, "start": 0}] if content.strip() else []
+        text = content.strip()
+        return [{"timestamp": "00:00", "text": text}] if text else []
     if not isinstance(content, (list, tuple)):
-        return []
+        # youtube-transcript-api FetchedTranscript is iterable, but may not be a list.
+        try:
+            content = list(content)
+        except (TypeError, ValueError):
+            return []
 
-    result: list[dict[str, str]] = []
+    segments: list[dict[str, str]] = []
     for item in content:
-        if isinstance(item, str):
-            text, stamp = item.strip(), "00:00"
-        elif isinstance(item, dict):
+        if isinstance(item, dict):
             text = str(item.get("text") or item.get("transcript") or "").strip()
             if not text:
                 continue
-            if item.get("timestamp") is not None and not isinstance(item.get("timestamp"), (int, float)):
-                stamp = str(item["timestamp"])
+            # Supadata offset is milliseconds; youtube-transcript-api start is seconds.
+            if "offset" in item:
+                try:
+                    seconds = float(item["offset"]) / 1000.0
+                except (TypeError, ValueError, OverflowError):
+                    seconds = 0
             else:
-                start = item.get("start", item.get("offset", item.get("startTime", 0)))
-                # Supadata's offset is milliseconds; start/startTime are seconds.
-                if "offset" in item and "start" not in item and "startTime" not in item:
-                    try:
-                        start = float(start) / 1000
-                    except (TypeError, ValueError, OverflowError):
-                        start = 0
-                stamp = format_timestamp(start)
+                raw_start = item.get("start", item.get("startTime", 0))
+                try:
+                    seconds = float(raw_start)
+                except (TypeError, ValueError, OverflowError):
+                    seconds = 0
+            stamp = item.get("timestamp")
+            timestamp = str(stamp) if isinstance(stamp, str) and stamp else format_timestamp(seconds)
         else:
             text = str(getattr(item, "text", "") or "").strip()
             if not text:
                 continue
-            stamp = format_timestamp(getattr(item, "start", 0))
-        if text:
-            result.append({"timestamp": stamp, "text": text})
-    return result
+            timestamp = format_timestamp(getattr(item, "start", 0))
+        segments.append({"timestamp": timestamp, "text": text})
+    return segments
+
+
+def _response_error(response: requests.Response) -> str:
+    """Build a useful error without exposing request headers or API keys."""
+    try:
+        body = response.json()
+    except ValueError:
+        body = {}
+    if isinstance(body, dict):
+        code = body.get("error")
+        message = body.get("message") or body.get("details")
+        if isinstance(code, dict):
+            message = code.get("message") or message
+            code = code.get("code") or code.get("type")
+        parts = [str(part) for part in (code, message) if part]
+        if parts:
+            return f"Supadata returned HTTP {response.status_code}: {' — '.join(parts)}"
+    return f"Supadata returned HTTP {response.status_code}. Check the API key, account credits, and video access."
+
+
+def _get_json(url: str, *, headers: dict[str, str], params: dict[str, str] | None = None) -> dict[str, Any]:
+    response = requests.get(
+        url,
+        headers=headers,
+        params=params,
+        timeout=(CONNECT_TIMEOUT_SECONDS, READ_TIMEOUT_SECONDS),
+    )
+    if not response.ok:
+        raise RuntimeError(_response_error(response))
+    try:
+        data = response.json()
+    except ValueError as exc:
+        raise RuntimeError("Supadata returned a non-JSON response.") from exc
+    if not isinstance(data, dict):
+        raise RuntimeError("Supadata returned an unexpected response format.")
+    return data
 
 
 def _fetch_supadata(video_id: str, key: str) -> list[dict[str, str]]:
     headers = {"x-api-key": key, "Accept": "application/json"}
-    response = requests.get(
-        f"{SUPADATA_URL}/transcript",
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
+    data = _get_json(
+        f"{SUPADATA_BASE_URL}/transcript",
         headers=headers,
-        params={"url": f"https://www.youtube.com/watch?v={video_id}", "mode": "auto"},
-        timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
+        params={"url": video_url, "mode": "auto"},
     )
-    response.raise_for_status()
-    data = response.json()
-    if not isinstance(data, dict):
-        raise ValueError("Unexpected Supadata response")
 
     job_id = data.get("jobId")
     if job_id:
-        deadline = time.monotonic() + MAX_SUPADATA_WAIT
-        for delay in POLL_INTERVALS:
+        deadline = time.monotonic() + MAX_JOB_WAIT_SECONDS
+        while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                break
-            time.sleep(min(delay, remaining))
-            poll = requests.get(
-                f"{SUPADATA_URL}/transcript/{job_id}",
+                raise TimeoutError(
+                    "Supadata transcript job is still processing after 120 seconds. Try again shortly."
+                )
+            time.sleep(min(POLL_INTERVAL_SECONDS, remaining))
+            data = _get_json(
+                f"{SUPADATA_BASE_URL}/transcript/{job_id}",
                 headers=headers,
-                timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
             )
-            poll.raise_for_status()
-            data = poll.json()
-            if not isinstance(data, dict):
-                raise ValueError("Unexpected Supadata job response")
             status = str(data.get("status", "")).lower()
-            if status in {"completed", "succeeded", "success"}:
+            if status == "failed":
+                detail = data.get("error")
+                raise RuntimeError(f"Supadata transcript job failed{': ' + str(detail) if detail else '.'}")
+            if status == "completed":
+                # Current REST docs show content on the job response. Also accept
+                # a nested result object, used by SDK versions/examples.
+                data = data.get("result", data)
+                if not isinstance(data, dict):
+                    raise RuntimeError("Supadata completed the job with an unexpected result format.")
                 break
-            if status in {"failed", "error"}:
-                raise RuntimeError("Supadata transcript job failed")
-            if time.monotonic() >= deadline:
-                break
-        else:
-            data = {}
-        if str(data.get("status", "")).lower() not in {"completed", "succeeded", "success"}:
-            raise TimeoutError("Supadata transcript job did not complete within the wait limit")
+            if status not in {"queued", "active"}:
+                raise RuntimeError(f"Supadata returned an unknown transcript job status: {status or 'missing'}.")
 
-    segments = _segments(data.get("content", data.get("segments", data.get("transcript", []))))
+    segments = _to_segments(data.get("content", data.get("segments", data.get("transcript", []))))
     if not segments:
-        raise ValueError("Supadata returned no usable transcript segments")
+        raise RuntimeError("Supadata returned no transcript segments (the video may contain no speech).")
     return segments
 
 
 def _fetch_youtube(video_id: str) -> list[dict[str, str]]:
-    # youtube-transcript-api 1.x interface; handle its FetchedTranscript items.
-    fetched = YouTubeTranscriptApi().fetch(video_id)
-    result = _segments(list(fetched))
-    if not result:
-        raise ValueError("YouTube returned no usable transcript segments")
-    return result
+    # This is the youtube-transcript-api 1.x interface.
+    transcript = YouTubeTranscriptApi().fetch(video_id)
+    segments = _to_segments(transcript)
+    if not segments:
+        raise RuntimeError("YouTube returned no transcript segments.")
+    return segments
 
 
-def get_transcript(video_id: str, api_key: str | None = None) -> tuple[str, list[dict[str, str]]]:
-    """Return transcript text and timestamped segments, with fast provider fallback.
+def get_transcript(
+    video_id: str,
+    api_key: str | None = None,
+) -> tuple[str, list[dict[str, str]]]:
+    """Return (full_text, timestamped_segments), preserving app.py's contract.
 
-    ``api_key`` is retained for app.py compatibility. The app currently passes
-    its Groq key here, so Supadata credentials are read only from
-    SUPADATA_API_KEY / Streamlit secrets and never logged.
+    ``api_key`` is retained for compatibility with app.py. In the supplied app
+    it is the Groq key, so Supadata uses SUPADATA_API_KEY from environment or
+    Streamlit secrets instead.
     """
-    del api_key  # Do not accidentally treat the app's Groq key as Supadata's.
-    key = _supadata_key()
-    segments: list[dict[str, str]] | None = None
-    if key:
+    del api_key  # Never send or mistake the Groq key for a Supadata credential.
+    video_id = extract_video_id(video_id)
+    supadata_key = _supadata_key()
+    supadata_error: Exception | None = None
+
+    if supadata_key:
         try:
-            segments = _fetch_supadata(video_id, key)
-        except Exception:
-            # Provider errors may include request details; deliberately avoid logging them.
-            pass
-    if segments is None:
+            segments = _fetch_supadata(video_id, supadata_key)
+            return " ".join(part["text"] for part in segments), segments
+        except Exception as exc:
+            # Continue to the library fallback, but preserve the real reason if
+            # it also fails; do not silently hide Supadata's response.
+            supadata_error = exc
+
+    try:
         segments = _fetch_youtube(video_id)
-    return " ".join(item["text"] for item in segments), segments
+        return " ".join(part["text"] for part in segments), segments
+    except Exception as youtube_error:
+        if supadata_key:
+            raise RuntimeError(
+                f"Transcript retrieval failed. Supadata: {supadata_error}. "
+                f"YouTube fallback: {youtube_error}"
+            ) from youtube_error
+        raise RuntimeError(
+            "No SUPADATA_API_KEY is configured and the YouTube transcript fallback failed: "
+            f"{youtube_error}"
+        ) from youtube_error
