@@ -1,7 +1,7 @@
 import json
 import re
 from groq import Groq
-
+from concurrent.futures import ThreadPoolExecutor
 
 # ============================================================
 # GROQ MODEL SETTINGS
@@ -417,13 +417,11 @@ def _reduce_summaries(
 
     current = list(summaries)
 
-    # Combine only two summaries per request.
-    # Repeat until one final summary remains.
     while len(current) > 1:
         next_level = []
 
-        for index in range(0, len(current), 2):
-            batch = current[index:index + 2]
+        for index in range(0, len(current), 4):
+            batch = current[index:index + 4]
 
             if len(batch) == 1:
                 next_level.append(batch[0])
