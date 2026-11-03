@@ -220,8 +220,8 @@ def _reduce_summaries(client, summaries, mode, language, detail_level):
     current = list(summaries)
     while len(current) > 1:
         next_level = []
-        for index in range(0, len(current), 4):
-            batch = current[index:index + 4]
+        for index in range(0, len(current), 2):
+            batch = current[index:index + 2]
             if len(batch) == 1:
                 next_level.append(batch[0])
             else:
@@ -266,7 +266,7 @@ def generate_summary(
         )
 
     # Keep concurrency modest to reduce the chance of Groq rate limits.
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    with ThreadPoolExecutor(max_workers=2) as executor:
         partial_summaries = list(executor.map(
             summarize_one, enumerate(chunks, start=1)
         ))
